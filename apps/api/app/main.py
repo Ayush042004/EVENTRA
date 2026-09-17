@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging, logger
 from app.core.exceptions import register_exception_handlers
 from app.api.routes.health import router as health_router
+from app.api.routes.events import router as events_router
 from app.api.routes.venues import router as venues_router
 from app.api.routes.vendors import router as vendors_router
 
@@ -50,6 +51,9 @@ register_exception_handlers(app)
 
 # Mount Health Routes
 app.include_router(health_router)
+
+# Mount Phase 1 Events Routes
+app.include_router(events_router, prefix=settings.API_V1_STR)
 
 # Mount Phase 3 Venue and Provider Network Routes
 app.include_router(venues_router, prefix=settings.API_V1_STR)

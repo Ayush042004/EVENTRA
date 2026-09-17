@@ -1,4 +1,17 @@
 """Database Models Export Hub"""
+from app.models.enums import (
+    EventType,
+    EventState,
+    TaskStatus,
+    TaskPriority,
+    VendorStatus,
+    RequirementType,
+    ConstraintType,
+    DependencyType,
+    IncidentSeverity,
+    RoleType,
+    PermissionCategory,
+)
 from app.models.venue import Venue
 from app.models.venue_availability import VenueAvailability
 from app.models.vendor import Vendor
@@ -8,10 +21,10 @@ from app.models.event import Event
 from app.models.event_member import EventMember
 from app.models.user import User
 from app.models.role import Role
-from app.models.permission import Permission
+from app.models.permission import Permission, role_permissions
 from app.models.task import Task
-from app.models.dependency import Dependency
-from app.models.budget import Budget
+from app.models.dependency import TaskDependency, Dependency
+from app.models.budget import BudgetItem, Budget
 from app.models.incident import Incident
 from app.models.recovery import Recovery
 from app.models.approval import Approval
@@ -25,6 +38,17 @@ from app.models.objective import Objective
 from app.models.constraint import Constraint
 
 __all__ = [
+    "EventType",
+    "EventState",
+    "TaskStatus",
+    "TaskPriority",
+    "VendorStatus",
+    "RequirementType",
+    "ConstraintType",
+    "DependencyType",
+    "IncidentSeverity",
+    "RoleType",
+    "PermissionCategory",
     "Venue",
     "VenueAvailability",
     "Vendor",
@@ -35,8 +59,11 @@ __all__ = [
     "User",
     "Role",
     "Permission",
+    "role_permissions",
     "Task",
+    "TaskDependency",
     "Dependency",
+    "BudgetItem",
     "Budget",
     "Incident",
     "Recovery",

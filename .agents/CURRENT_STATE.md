@@ -5,78 +5,85 @@ This is a living status document tracking the active engineering state of EVENTR
 ---
 
 ## Overall Status
-**STATUS:** PHASE 3 COMPLETE
+**STATUS:** PHASE 1 COMPLETE
 
-**CURRENT PHASE:** PHASE 3 — Venue + Provider Network (Completed)
+**CURRENT PHASE:** PHASE 1 — Foundational Relational Domain Model (Completed)
 
 ---
 
-## Phase 3 Implementation Details
+## Phase 1 Implementation Details
 
-### 1. Venue Network Implemented
-- **Data Models**:
-  - `Venue`: `id`, `name`, `address`, `city`, `latitude`, `longitude`, `capacity`, `venue_type`, `contact_email`, `contact_phone`, `hourly_rate`, `amenities` (JSON list), `status`, `created_at`, `updated_at`.
-  - `VenueAvailability`: `id`, `venue_id`, `start_datetime`, `end_datetime`, `status` (`AVAILABLE`, `BOOKED`, `BLOCKED`, `MAINTENANCE`), `notes`, `created_at`, `updated_at`.
-- **Venue Service**: Deterministic CRUD, multi-criteria filtering, availability conflict checking, and factual suitability checking.
-- **REST API Routes**:
-  - `GET /api/venues`: Search and filter venues with pagination and stable ordering.
-  - `POST /api/venues`: Create venue.
-  - `GET /api/venues/{venue_id}`: Retrieve venue by ID.
-  - `POST /api/venues/{venue_id}/availability`: Add availability or blackout slot.
-  - `GET /api/venues/{venue_id}/availability`: Evaluate venue availability for requested time window.
-  - `POST /api/venues/{venue_id}/suitability`: Evaluate factual suitability (guest capacity, amenities, time availability).
+### 1. Foundational Domain Entities Implemented
+- **User**: Foundational identity model (`id`, `name`, `email` [unique, indexed], `created_at`, `updated_at`, `owned_events`, `memberships`).
+- **Event**: Authoritative root aggregate (`id`, `owner_id` [FK `users.id`], `name`, `description`, `event_type`, `location`, `start_datetime`, `end_datetime`, `guest_count`, `state` [NORMAL, AT_RISK, CRITICAL, EMERGENCY, RECOVERY], `total_budget`, `currency`, `created_at`, `updated_at`).
+  - Strict deliberate cascade lifecycles defined for child entities.
+- **EventMember**: Scoped event membership (`id`, `event_id` [FK `events.id`], `user_id` [FK `users.id`], `role` [MAIN_ORGANIZER, EVENT_MANAGER, COLLABORATOR, VENDOR, VIEWER], `role_id` [FK `roles.id`], `created_at`, `updated_at`, `UniqueConstraint(event_id, user_id)`).
+- **Role & Permission**: Controlled RBAC foundation (`roles`, `permissions`, and `role_permissions` association table supporting categories VIEW, MINOR_CHANGE, CRITICAL_CHANGE, APPROVE).
+- **Requirement**: Event requirement model (`id`, `event_id`, `type`, `name`, `description`, `value` [JSON], `required` [boolean], `created_at`, `updated_at`).
+- **Constraint**: Hard/soft constraint model (`id`, `event_id`, `type`, `name`, `description`, `value` [JSON], `severity` [HARD, SOFT], `created_at`, `updated_at`).
+- **Objective**: Event objective model (`id`, `event_id`, `type`, `name`, `description`, `priority` [CRITICAL, HIGH, MEDIUM, LOW, FLEXIBLE], `target_value` [JSON], `created_at`, `updated_at`).
+- **Venue**: Foundational venue representation with physical capacity, location, rates, and amenities.
+- **Vendor / Provider**: Provider catalog entity with operational category, location, contact, and rates.
+- **VendorAssignment**: Binding vendor to event with status and agreed cost.
+- **Task**: Operational task entity (`id`, `event_id`, `name`, `description`, `status`, `priority`, `planned_start`, `planned_end`, `actual_start`, `actual_end`, `created_at`, `updated_at`).
+- **TaskDependency**: Adjacency graph edges (`id`, `event_id`, `predecessor_task_id`, `successor_task_id`, `dependency_type`, `created_at`, `UniqueConstraint(predecessor, successor)`, `CheckConstraint(predecessor != successor)`, Python validator preventing self-dependencies).
+- **Resource**: Physical and logistical resources (`id`, `event_id`, `name`, `type`, `quantity`, `unit`, `status`, `created_at`, `updated_at`).
+- **BudgetItem**: Financial tracking using exact `Decimal`/`Numeric(12, 2)` monetary semantics (`id`, `event_id`, `name`, `category`, `estimated_amount`, `actual_amount`, `currency`, `status`, `created_at`, `updated_at`).
 
-### 2. Provider (Vendor) Network Implemented
-- **Data Models**:
-  - `Vendor`: `id`, `name`, `category`, `city`, `contact_name`, `contact_email`, `contact_phone`, `base_cost`, `service_description`, `status`, `created_at`, `updated_at`.
-  - `ProviderAvailability`: `id`, `vendor_id`, `start_datetime`, `end_datetime`, `status` (`AVAILABLE`, `BOOKED`, `BLOCKED`), `notes`, `created_at`, `updated_at`.
-  - `VendorAssignment`: `id`, `event_id`, `vendor_id`, `category`, `status` (`REQUESTED`, `CONFIRMED`, `CANCELLED`), `agreed_cost`, `notes`, `created_at`, `updated_at`.
-- **Provider Service**: Deterministic CRUD, category filtering, city/cost filtering, availability conflict checking, category validation, and assignment management.
-- **REST API Routes**:
-  - `GET /api/vendors`: Search providers with pagination and stable ordering.
-  - `POST /api/vendors`: Create provider.
-  - `GET /api/vendors/{vendor_id}`: Retrieve provider by ID.
-  - `POST /api/vendors/{vendor_id}/availability`: Add provider availability slot.
-  - `GET /api/vendors/{vendor_id}/availability`: Evaluate provider availability for requested time window.
-  - `GET /api/vendors/categories/validate`: Validate provider category compatibility against event domains.
-  - `POST /api/vendors/assignments`: Create operational provider assignment for an event.
-  - `GET /api/vendors/assignments/event/{event_id}`: List assignments for an event.
+### 2. Database Migrations
+- **Migration Name**: `0002_phase1_foundational_domain_model.py` (Revision ID: `0002_phase1`, Revises: `0001_phase3`).
+- Generates clean, transactional DDL for PostgreSQL and batch-mode SQLite.
+- Supports complete symmetric upgrade and downgrade.
 
-### 3. Availability Handling
-- Deterministic interval intersection checking: window conflict detected when `req_start < slot.end_datetime and req_end > slot.start_datetime`.
-- Controlled status handling: `AVAILABLE`, `BOOKED`, `BLOCKED`, `MAINTENANCE`.
-- Inactive venues and providers are strictly reported as unavailable with factual explanatory reason.
+### 3. Pydantic Contracts
+- Clean request/response schemas in `app/schemas/`:
+  - `UserCreate`, `UserResponse`, `UserUpdate`
+  - `EventCreate`, `EventResponse`, `EventUpdate`
+  - `EventMemberCreate`, `EventMemberResponse`
+  - `RoleCreate`, `RoleResponse`, `PermissionResponse`
+  - `RequirementCreate`, `RequirementResponse`
+  - `ConstraintCreate`, `ConstraintResponse`
+  - `ObjectiveCreate`, `ObjectiveResponse`
+  - `TaskCreate`, `TaskResponse`, `TaskDependencyCreate`, `TaskDependencyResponse`
+  - `ResourceCreate`, `ResourceResponse`
+  - `BudgetItemCreate`, `BudgetItemResponse`
 
-### 4. Search and Filtering
-- Supported filters: city (case-insensitive), capacity limits (min/max), venue type, status, price ceiling, required amenities (complete subset check), and availability windows.
-- Sane pagination (`limit`, `offset`) with deterministic, stable tie-breaking ordering (`ORDER BY name ASC, id ASC`).
+### 4. Minimal Persistence Service & API Endpoints
+- **Service**: `EventService` in `app/services/event_service.py` providing CRUD operations and invariant enforcement for all Phase 1 domain entities without implementing premature business engines.
+- **API Endpoints**:
+  - `POST /api/events`: Create event with authoritative owner.
+  - `GET /api/events/{event_id}`: Retrieve event details.
+  - `POST /api/events/{event_id}/members`: Add collaborator to event.
+  - `GET /api/events/{event_id}/members`: List event members.
 
-### 5. Suitability and Category Validation
-- Factual scorecard: returns `capacity_satisfied`, `amenities_satisfied`, `missing_amenities`, `availability_satisfied`, and `is_suitable`. Strictly no subjective AI ranking, scores, or "best" labels.
-- Domain intelligence integration:
-  - **Wedding**: `catering`, `decoration`, `photography`, `videography`, `music`, `lighting`, `transportation`
-  - **College Fest**: `sound`, `lighting`, `stage`, `security`, `catering`, `equipment`, `power`
-  - **Conference**: `av`, `catering`, `stage`, `lighting`, `connectivity`, `equipment`, `signage`
+### 5. Tests Added
+- `tests/test_phase1_domain.py`: 13 comprehensive model integrity tests:
+  - User creation and unique email constraint.
+  - Event ownership and owner relationship.
+  - Event membership and duplicate membership prevention.
+  - Role and permission M2M association.
+  - Requirements, Constraints, Objectives event-parenting.
+  - Task creation and event binding.
+  - TaskDependency integrity: self-dependency rejection and duplicate edge prevention.
+  - Resource ownership and capacity tracking.
+  - BudgetItem monetary Decimal correctness without float distortion.
+  - VendorAssignment dual relationship loading.
+  - Cascade deletion lifecycle (deleting event cleans up all child elements).
+- `tests/test_migration.py`: Automated upgrade -> downgrade -> re-upgrade cycle testing against live SQLite schema engine.
+- `tests/integration/api/test_events_api.py`: Integration testing for event creation, membership assignment, duplicate rejection, and non-existent owner rejection.
+- `tests/unit/services/test_event_service.py`: Service-level lifecycle test across all domain entities.
 
-### 6. Development and Demo Seed Data
-- Curated deterministic seed datasets in `seeds/venues/demo_venues.json` and `seeds/vendors/demo_vendors.json`.
-- Automated idempotent seed runner in `seeds/seed_runner.py` for test and local development databases.
+### 6. Verification Results
+- **Migrations**: PASS (`alembic upgrade head --sql` dry-run valid PostgreSQL DDL; upgrade, downgrade, re-upgrade cycle PASS).
+- **Tests**: PASS (46/46 tests passing).
+- **Startup**: PASS (FastAPI application starts up cleanly with lifespan hooks).
+- **Health**: PASS (`/health` returns HTTP 200 `healthy`).
 
-### 7. Database Migrations
-- Alembic revision `0001_phase3` in `apps/api/alembic/versions/0001_phase3_venue_and_provider_network.py`.
-- Generates clean, transactional DDL for PostgreSQL with indexes on foreign keys, categories, cities, capacities, and date ranges.
-
-### 8. Verification Results
-- **Migrations**: PASS (Alembic dry-run SQL generated cleanly).
-- **Tests**: PASS (30/30 tests passing, covering venues, vendors, assignments, domains, API routes, determinism, and seeds).
-- **TypeScript Typecheck**: PASS (`npm run typecheck` across web and contracts).
-- **Startup**: PASS (FastAPI application imports, mounts, and registers all 20 routes).
-
-### 9. Known Limitations
-- Geospatial distance calculation is currently relational (city / lat-long attributes) without PostGIS spatial indices; external Google Places/Maps integration is deferred to future phases.
-- Provider booking and procurement transactions are intentionally omitted in Phase 3 per architectural boundaries.
+### 7. Known Limitations
+- Authorization is foundational (ownership, membership, role enum); dynamic impact-aware permission evaluation is deferred to Phase 9.
+- Domain engines (planning, dependency DAG cycle detection, schedule algebra, recovery) are deliberately not implemented per Phase 1 scope boundaries.
 
 ---
 
 ## Next Phase
-**NEXT PHASE = PHASE 4 — PLANNING ENGINE**
+**NEXT PHASE = PHASE 2 — EVENT SPECIFICATION + DOMAIN INTELLIGENCE**

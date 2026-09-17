@@ -23,6 +23,36 @@ class AppException(Exception):
         self.details = details or {}
 
 
+class NotFoundException(AppException):
+    def __init__(self, message: str = "Resource not found.", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="NOT_FOUND",
+            details=details,
+        )
+
+
+class ConflictException(AppException):
+    def __init__(self, message: str = "Resource conflict.", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_409_CONFLICT,
+            code="CONFLICT",
+            details=details,
+        )
+
+
+class BadRequestException(AppException):
+    def __init__(self, message: str = "Bad request.", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="BAD_REQUEST",
+            details=details,
+        )
+
+
 class DatabaseUnavailableException(AppException):
     def __init__(self, message: str = "Database service is currently unavailable."):
         super().__init__(

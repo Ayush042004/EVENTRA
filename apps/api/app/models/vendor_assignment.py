@@ -24,3 +24,4 @@ class VendorAssignment(Base):
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     vendor = relationship("Vendor", back_populates="assignments")
+    event = relationship("Event", back_populates="vendor_assignments")
