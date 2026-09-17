@@ -1,2 +1,84 @@
-"""Domain Wedding - dependencies"""
-from typing import Dict, List, Any
+"""Wedding domain baseline task dependencies."""
+from typing import List
+from app.domains.types import DependencyDefinition, DependencyType
+
+WEDDING_DEPENDENCIES: List[DependencyDefinition] = [
+    DependencyDefinition(
+        predecessor_key="wedding.venue_prep",
+        successor_key="wedding.power_setup",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.venue_prep",
+        successor_key="wedding.decor_setup",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=15,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.venue_prep",
+        successor_key="wedding.seating_setup",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.venue_prep",
+        successor_key="wedding.catering_setup",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=30,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.power_setup",
+        successor_key="wedding.sound_music_setup",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.sound_music_setup",
+        successor_key="wedding.sound_check",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.decor_setup",
+        successor_key="wedding.ceremony_prep",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.decor_setup",
+        successor_key="wedding.photo_video_setup",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.seating_setup",
+        successor_key="wedding.guest_area_prep",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.ceremony_prep",
+        successor_key="wedding.readiness_check",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.sound_check",
+        successor_key="wedding.readiness_check",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.catering_setup",
+        successor_key="wedding.readiness_check",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+    DependencyDefinition(
+        predecessor_key="wedding.guest_area_prep",
+        successor_key="wedding.readiness_check",
+        dependency_type=DependencyType.FINISH_TO_START,
+        lag_minutes=0,
+    ),
+]
