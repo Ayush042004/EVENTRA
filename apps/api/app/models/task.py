@@ -1,7 +1,7 @@
 """SQLAlchemy Model: Task"""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 from app.models.enums import TaskStatus, TaskPriority
@@ -16,10 +16,16 @@ class Task(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     event_id = Column(String(36), ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(String(255), nullable=True, index=True)  # Stable domain task key, e.g. 'wedding.venue_prep'
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
     status = Column(String(50), default=TaskStatus.PENDING.value, nullable=False, index=True)
     priority = Column(String(50), default=TaskPriority.MEDIUM.value, nullable=False)
+    phase = Column(String(50), nullable=True)  # PRE_EVENT, SETUP, EXECUTION
+    required_provider_category = Column(String(100), nullable=True)  # Matching vendor category
+    duration_minutes = Column(Integer, nullable=True)  # Estimated duration from domain baseline
+    slack_minutes = Column(Integer, nullable=True)  # Computed by critical path engine
+    is_critical_path = Column(Boolean, default=False, nullable=False)  # Set by critical path engine
     planned_start = Column(DateTime, nullable=True)
     planned_end = Column(DateTime, nullable=True)
     actual_start = Column(DateTime, nullable=True)
