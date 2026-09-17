@@ -1,0 +1,92 @@
+"""Canonical Controlled Domain Enums for EVENTRA"""
+from enum import Enum
+
+
+class EventType(str, Enum):
+    WEDDING = "WEDDING"
+    CONFERENCE = "CONFERENCE"
+    COLLEGE_FEST = "COLLEGE_FEST"
+    CORPORATE = "CORPORATE"
+    CONCERT = "CONCERT"
+    EXHIBITION = "EXHIBITION"
+    OTHER = "OTHER"
+
+
+class EventState(str, Enum):
+    NORMAL = "NORMAL"
+    AT_RISK = "AT_RISK"
+    CRITICAL = "CRITICAL"
+    EMERGENCY = "EMERGENCY"
+    RECOVERY = "RECOVERY"
+
+
+class TaskStatus(str, Enum):
+    PENDING = "PENDING"
+    READY = "READY"
+    IN_PROGRESS = "IN_PROGRESS"
+    BLOCKED = "BLOCKED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class TaskPriority(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class VendorStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    UNAVAILABLE = "UNAVAILABLE"
+
+
+class RequirementType(str, Enum):
+    VENUE = "VENUE"
+    CATERING = "CATERING"
+    EQUIPMENT = "EQUIPMENT"
+    ACCESSIBILITY = "ACCESSIBILITY"
+    STAFFING = "STAFFING"
+    PERMIT = "PERMIT"
+    GENERAL = "GENERAL"
+
+
+class ConstraintType(str, Enum):
+    TIME_WINDOW = "TIME_WINDOW"
+    BUDGET_CAP = "BUDGET_CAP"
+    NOISE_CURFEW = "NOISE_CURFEW"
+    VENUE_CAPACITY = "VENUE_CAPACITY"
+    RESOURCE = "RESOURCE"
+    REGULATORY = "REGULATORY"
+    GENERAL = "GENERAL"
+
+
+class DependencyType(str, Enum):
+    FINISH_TO_START = "FINISH_TO_START"
+    START_TO_START = "START_TO_START"
+    FINISH_TO_FINISH = "FINISH_TO_FINISH"
+    START_TO_FINISH = "START_TO_FINISH"
+
+
+class IncidentSeverity(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    EMERGENCY = "EMERGENCY"
+
+
+class RoleType(str, Enum):
+    MAIN_ORGANIZER = "MAIN_ORGANIZER"
+    EVENT_MANAGER = "EVENT_MANAGER"
+    COLLABORATOR = "COLLABORATOR"
+    VENDOR = "VENDOR"
+    VIEWER = "VIEWER"
+
+
+class PermissionCategory(str, Enum):
+    VIEW = "VIEW"
+    MINOR_CHANGE = "MINOR_CHANGE"
+    CRITICAL_CHANGE = "CRITICAL_CHANGE"
+    APPROVE = "APPROVE"

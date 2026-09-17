@@ -9,6 +9,7 @@
     "dev:api": "cd apps/api && uvicorn app.main:app --reload --port 8000",
     "build": "npm run build --workspaces",
     "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces"
   },
   "workspaces": [

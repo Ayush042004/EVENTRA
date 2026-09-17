@@ -1,14 +1,57 @@
-"""Pydantic Schema: Task"""
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+"""Pydantic Schemas: Task and TaskDependency"""
 from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel, ConfigDict
+from app.models.enums import TaskStatus, TaskPriority, DependencyType
+
 
 class TaskBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    status: str = TaskStatus.PENDING.value
+    priority: str = TaskPriority.MEDIUM.value
+    planned_start: Optional[datetime] = None
+    planned_end: Optional[datetime] = None
+    actual_start: Optional[datetime] = None
+    actual_end: Optional[datetime] = None
+
+
+class TaskCreate(TaskBase):
     pass
+
+
+class TaskUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    planned_start: Optional[datetime] = None
+    planned_end: Optional[datetime] = None
+    actual_start: Optional[datetime] = None
+    actual_end: Optional[datetime] = None
+
 
 class TaskResponse(TaskBase):
     id: str
-    created_at: Optional[datetime] = None
+    event_id: str
+    created_at: datetime
+    updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskDependencyCreate(BaseModel):
+    predecessor_task_id: str
+    successor_task_id: str
+    dependency_type: str = DependencyType.FINISH_TO_START.value
+
+
+class TaskDependencyResponse(BaseModel):
+    id: str
+    event_id: str
+    predecessor_task_id: str
+    successor_task_id: str
+    dependency_type: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
