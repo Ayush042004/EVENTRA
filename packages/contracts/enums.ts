@@ -1,0 +1,105 @@
+export enum EventStatus {
+  DRAFT = "DRAFT",
+  SPECIFIED = "SPECIFIED",
+  PLANNED = "PLANNED",
+  LIVE = "LIVE",
+  INCIDENT = "INCIDENT",
+  EMERGENCY = "EMERGENCY",
+  CONCLUDED = "CONCLUDED",
+  CANCELLED = "CANCELLED",
+}
+
+export enum TaskStatus {
+  PENDING = "PENDING",
+  READY = "READY",
+  IN_PROGRESS = "IN_PROGRESS",
+  BLOCKED = "BLOCKED",
+  COMPLETED = "COMPLETED",
+  FAILED = "FAILED",
+}
+
+export enum DependencyType {
+  FINISH_TO_START = "FINISH_TO_START",
+  START_TO_START = "START_TO_START",
+}
+
+export enum ObjectivePriority {
+  CRITICAL = "CRITICAL",
+  HIGH = "HIGH",
+  MEDIUM = "MEDIUM",
+  FLEXIBLE = "FLEXIBLE",
+}
+
+export enum VendorCategory {
+  CATERING = "CATERING",
+  AV_LIGHTING = "AV_LIGHTING",
+  VENUE = "VENUE",
+  DECOR = "DECOR",
+  SECURITY = "SECURITY",
+  LOGISTICS = "LOGISTICS",
+  ENTERTAINMENT = "ENTERTAINMENT",
+}
+
+export enum VendorAssignmentStatus {
+  REQUESTED = "REQUESTED",
+  CONFIRMED = "CONFIRMED",
+  EN_ROUTE = "EN_ROUTE",
+  ON_SITE = "ON_SITE",
+  COMPLETED = "COMPLETED",
+  NO_SHOW = "NO_SHOW",
+  CANCELLED = "CANCELLED",
+}
+
+export enum IncidentSeverity {
+  LOW = "LOW",
+  MEDIUM = "MEDIUM",
+  HIGH = "HIGH",
+  EMERGENCY = "EMERGENCY",
+}
+
+export enum IncidentStatus {
+  DETECTED = "DETECTED",
+  ANALYZING = "ANALYZING",
+  RECOVERY_PROPOSED = "RECOVERY_PROPOSED",
+  RECOVERING = "RECOVERING",
+  RESOLVED = "RESOLVED",
+}
+
+export enum RecoveryStrategyType {
+  RESEQUENCE = "RESEQUENCE",
+  SUBSTITUTE_VENDOR = "SUBSTITUTE_VENDOR",
+  REALLOCATE_RESOURCE = "REALLOCATE_RESOURCE",
+  SCOPE_SHED = "SCOPE_SHED",
+}
+
+export enum ActionImpactLevel {
+  VIEW = "VIEW",
+  MINOR = "MINOR",
+  CRITICAL = "CRITICAL",
+}
+
+export enum ApprovalStatus {
+  PENDING = "PENDING",
+  APPROVED = "APPROVED",
+  REJECTED = "REJECTED",
+}
+
+export enum RoleName {
+  MAIN_ORGANIZER = "MAIN_ORGANIZER",
+  EVENT_MANAGER = "EVENT_MANAGER",
+  COLLABORATOR = "COLLABORATOR",
+  VENDOR = "VENDOR",
+  VIEWER = "VIEWER",
+}
+
+export enum NotificationChannel {
+  PUSH = "PUSH",
+  IN_APP = "IN_APP",
+  WHATSAPP = "WHATSAPP",
+}
+
+export enum VerificationType {
+  PROVIDER_CONFIRMATION = "PROVIDER_CONFIRMATION",
+  SUPERVISOR_CHECKOFF = "SUPERVISOR_CHECKOFF",
+  TELEMETRY = "TELEMETRY",
+}

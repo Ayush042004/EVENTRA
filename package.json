@@ -1,0 +1,25 @@
+{
+  "name": "eventra-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EVENTRA - Adaptive Event Operations Platform",
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "cd apps/api && uvicorn app.main:app --reload --port 8000",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces",
+    "test": "npm run test --workspaces"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

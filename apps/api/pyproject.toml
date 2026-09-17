@@ -1,0 +1,18 @@
+[project]
+name = "eventra-api"
+version = "0.1.0"
+description = "EVENTRA Adaptive Event Operations API"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn>=0.29.0",
+    "pydantic>=2.7.1",
+    "sqlalchemy>=2.0.30",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"

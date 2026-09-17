@@ -1,0 +1,23 @@
+"""API Routes Init Hub"""
+from app.api.routes.auth import router as auth_router
+from app.api.routes.events import router as events_router
+from app.api.routes.setup import router as setup_router
+from app.api.routes.venues import router as venues_router
+from app.api.routes.vendors import router as vendors_router
+from app.api.routes.planning import router as planning_router
+from app.api.routes.tasks import router as tasks_router
+from app.api.routes.schedule import router as schedule_router
+from app.api.routes.budget import router as budget_router
+from app.api.routes.live import router as live_router
+from app.api.routes.incidents import router as incidents_router
+from app.api.routes.impact import router as impact_router
+from app.api.routes.risk import router as risk_router
+from app.api.routes.recovery import router as recovery_router
+from app.api.routes.approvals import router as approvals_router
+from app.api.routes.procurement import router as procurement_router
+from app.api.routes.notifications import router as notifications_router
+from app.api.routes.collaborators import router as collaborators_router
+from app.api.routes.analytics import router as analytics_router
+from app.api.routes.audit import router as audit_router
+from app.api.routes.verification import router as verification_router
+from app.api.routes.simulation import router as simulation_router
