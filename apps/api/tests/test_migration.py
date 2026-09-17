@@ -62,7 +62,16 @@ def test_alembic_upgrade_downgrade_cycle():
         inspector = inspect(engine)
         tables_reupgraded = set(inspector.get_table_names())
         assert expected_phase1_tables.issubset(tables_reupgraded)
+        engine.dispose()
 
     finally:
+        try:
+            if 'engine' in locals():
+                engine.dispose()
+        except Exception:
+            pass
         if os.path.exists(tmp_db_path):
-            os.remove(tmp_db_path)
+            try:
+                os.remove(tmp_db_path)
+            except Exception:
+                pass

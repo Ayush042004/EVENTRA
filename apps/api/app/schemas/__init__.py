@@ -10,6 +10,10 @@ from app.schemas.specification import (
     ConstraintResponse,
     ObjectiveCreate,
     ObjectiveResponse,
+    ConstraintDefinition,
+    ObjectiveDefinition,
+    EventSpecification,
+    EventSpecificationPreviewRequest,
 )
 from app.schemas.task import (
     TaskCreate,
@@ -56,4 +60,8 @@ __all__ = [
     "VendorResponse",
     "VendorAssignmentCreate",
     "VendorAssignmentResponse",
+    "ConstraintDefinition",
+    "ObjectiveDefinition",
+    "EventSpecification",
+    "EventSpecificationPreviewRequest",
 ]
