@@ -1,0 +1,152 @@
+[
+  {
+    "id": "vnd-001-del-sound",
+    "name": "Apex Pro Audio Systems",
+    "category": "sound",
+    "city": "Delhi",
+    "contact_name": "Rajesh Kumar",
+    "contact_email": "rajesh@apexproaudio.demo",
+    "contact_phone": "+91-9811122334",
+    "base_cost": 750.0,
+    "service_description": "Concert line-array audio systems, wireless microphones, digital mixing consoles.",
+    "status": "ACTIVE",
+    "availabilities": [
+      {
+        "start_datetime": "2026-10-15T10:00:00",
+        "end_datetime": "2026-10-15T22:00:00",
+        "status": "BOOKED",
+        "notes": "Festival Main Stage Audio"
+      }
+    ]
+  },
+  {
+    "id": "vnd-002-del-cater",
+    "name": "Royal Feast Caterers",
+    "category": "catering",
+    "city": "Delhi",
+    "contact_name": "Sunita Verma",
+    "contact_email": "sunita@royalfeast.demo",
+    "contact_phone": "+91-9822233445",
+    "base_cost": 1200.0,
+    "service_description": "Multi-cuisine buffet and plated dining service for weddings, conferences, and festivals.",
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnd-003-blr-av",
+    "name": "Beamline AV & Displays",
+    "category": "av",
+    "city": "Bengaluru",
+    "contact_name": "Arun Nair",
+    "contact_email": "arun@beamlineav.demo",
+    "contact_phone": "+91-9833344556",
+    "base_cost": 900.0,
+    "service_description": "LED video walls, 4K projection, live streaming, and interactive presentation staging.",
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnd-004-blr-light",
+    "name": "Lumina Pro Stage Lighting",
+    "category": "lighting",
+    "city": "Bengaluru",
+    "contact_name": "Deepak Rao",
+    "contact_email": "deepak@luminalighting.demo",
+    "contact_phone": "+91-9844455667",
+    "base_cost": 600.0,
+    "service_description": "Intelligent moving heads, architectural uplighting, laser fixtures, and DMX control.",
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnd-005-mum-decor",
+    "name": "Elegance Floral & Stage Decor",
+    "category": "decoration",
+    "city": "Mumbai",
+    "contact_name": "Pooja Mehta",
+    "contact_email": "pooja@elegancedecor.demo",
+    "contact_phone": "+91-9855566778",
+    "base_cost": 1100.0,
+    "service_description": "Custom Mandap designs, floral installations, thematic conference branding setups.",
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnd-006-del-stage",
+    "name": "Titan Rigging & Stage Works",
+    "category": "stage",
+    "city": "Delhi",
+    "contact_name": "Vikram Singh",
+    "contact_email": "vikram@titanrigging.demo",
+    "contact_phone": "+91-9866677889",
+    "base_cost": 1500.0,
+    "service_description": "Modular heavy-duty outdoor and indoor staging, aluminum trussing, roof systems.",
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnd-007-del-sec",
+    "name": "Vanguard Event Security & Bouncers",
+    "category": "security",
+    "city": "Delhi",
+    "contact_name": "Anil Sharma",
+    "contact_email": "anil@vanguardsec.demo",
+    "contact_phone": "+91-9877788990",
+    "base_cost": 500.0,
+    "service_description": "Licensed bouncers, crowd management teams, metal detectors, and VIP escorts.",
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnd-008-blr-wifi",
+    "name": "NetStream High-Density Connectivity",
+    "category": "connectivity",
+    "city": "Bengaluru",
+    "contact_name": "Kiran Pai",
+    "contact_email": "kiran@netstream.demo",
+    "contact_phone": "+91-9888899001",
+    "base_cost": 850.0,
+    "service_description": "Dedicated gigabit internet leased lines, high-density enterprise WiFi access points.",
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnd-009-mum-photo",
+    "name": "CandidMoments Wedding & Event Photography",
+    "category": "photography",
+    "city": "Mumbai",
+    "contact_name": "Sneha Kulkarni",
+    "contact_email": "sneha@candidmoments.demo",
+    "contact_phone": "+91-9899900112",
+    "base_cost": 950.0,
+    "service_description": "Candid wedding coverage, drone cinematography, 4K video reels and same-day edits.",
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnd-010-del-power",
+    "name": "VoltPower Silent Generators",
+    "category": "power",
+    "city": "Delhi",
+    "contact_name": "Manoj Gujral",
+    "contact_email": "manoj@voltpower.demo",
+    "contact_phone": "+91-9800011223",
+    "base_cost": 400.0,
+    "service_description": "125 kVA soundproof mobile diesel generators and auto-mains-failure distribution panels.",
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnd-011-del-inactive",
+    "name": "OldTown Legacy Sound",
+    "category": "sound",
+    "city": "Delhi",
+    "contact_name": "Ramesh",
+    "contact_email": "ramesh@oldtown.demo",
+    "contact_phone": "+91-9811100000",
+    "base_cost": 300.0,
+    "service_description": "Vintage PA horns and analog amplifiers.",
+    "status": "INACTIVE",
+    "availabilities": []
+  }
+]

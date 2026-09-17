@@ -1,9 +1,148 @@
-"""API Route: Venues"""
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List, Optional, Dict, Any
+"""API Route: Venues (Venue Network Discovery and Suitability)"""
+from typing import List, Optional
+from datetime import datetime
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.orm import Session
+
+from app.api.dependencies import get_db_session
+from app.services.venue_service import VenueService
+from app.schemas.venue import (
+    VenueCreate,
+    VenueResponse,
+    VenueAvailabilityCreate,
+    VenueAvailabilityResponse,
+    VenueAvailabilityResult,
+    VenueSuitabilityCheck,
+    VenueSuitabilityResult,
+    PaginatedVenuesResponse,
+)
+from app.core.exceptions import AppException
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 
-@router.get("/")
-def get_venues_root():
-    return {"status": "ok", "resource": "venues"}
+
+@router.get("", response_model=PaginatedVenuesResponse)
+def search_venues(
+    city: Optional[str] = Query(None, description="Filter by city (case-insensitive)"),
+    min_capacity: Optional[int] = Query(None, ge=1, description="Minimum guest capacity"),
+    max_capacity: Optional[int] = Query(None, ge=1, description="Maximum guest capacity"),
+    venue_type: Optional[str] = Query(None, description="Venue type/category"),
+    status: Optional[str] = Query("ACTIVE", description="Venue operational status"),
+    max_hourly_rate: Optional[float] = Query(None, ge=0.0, description="Maximum rental rate"),
+    amenities: Optional[List[str]] = Query(None, description="Required amenities list"),
+    available_from: Optional[datetime] = Query(None, description="Start of availability window"),
+    available_to: Optional[datetime] = Query(None, description="End of availability window"),
+    limit: int = Query(50, ge=1, le=100, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Page offset"),
+    db: Session = Depends(get_db_session),
+):
+    """Deterministically searches and filters venue options."""
+    service = VenueService(db)
+    try:
+        items, total = service.search_venues(
+            city=city,
+            min_capacity=min_capacity,
+            max_capacity=max_capacity,
+            venue_type=venue_type,
+            status=status,
+            max_hourly_rate=max_hourly_rate,
+            required_amenities=amenities,
+            available_from=available_from,
+            available_to=available_to,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise AppException(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST, code="INVALID_PARAMETERS")
+
+    return PaginatedVenuesResponse(
+        total=total,
+        items=[VenueResponse.model_validate(v) for v in items],
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("", response_model=VenueResponse, status_code=status.HTTP_201_CREATED)
+def create_venue(
+    venue_in: VenueCreate,
+    db: Session = Depends(get_db_session),
+):
+    """Registers a new venue in the venue network."""
+    service = VenueService(db)
+    venue = service.create_venue(venue_in)
+    return VenueResponse.model_validate(venue)
+
+
+@router.get("/{venue_id}", response_model=VenueResponse)
+def get_venue(
+    venue_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """Retrieves single venue record by ID."""
+    service = VenueService(db)
+    venue = service.get_venue(venue_id)
+    if not venue:
+        raise AppException(
+            message=f"Venue '{venue_id}' not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="VENUE_NOT_FOUND",
+        )
+    return VenueResponse.model_validate(venue)
+
+
+@router.post("/{venue_id}/availability", response_model=VenueAvailabilityResponse, status_code=status.HTTP_201_CREATED)
+def add_venue_availability(
+    venue_id: str,
+    avail_in: VenueAvailabilityCreate,
+    db: Session = Depends(get_db_session),
+):
+    """Adds an operational availability window (AVAILABLE, BOOKED, BLOCKED, MAINTENANCE)."""
+    service = VenueService(db)
+    try:
+        slot = service.add_venue_availability(venue_id, avail_in)
+    except ValueError as exc:
+        err_msg = str(exc)
+        if "not found" in err_msg:
+            raise AppException(message=err_msg, status_code=status.HTTP_404_NOT_FOUND, code="VENUE_NOT_FOUND")
+        raise AppException(message=err_msg, status_code=status.HTTP_400_BAD_REQUEST, code="INVALID_TIMEFRAME")
+    return VenueAvailabilityResponse.model_validate(slot)
+
+
+@router.get("/{venue_id}/availability", response_model=VenueAvailabilityResult)
+def check_venue_availability(
+    venue_id: str,
+    start_datetime: datetime = Query(..., description="Start of requested window"),
+    end_datetime: datetime = Query(..., description="End of requested window"),
+    db: Session = Depends(get_db_session),
+):
+    """Checks whether a venue is available during a specified time window."""
+    service = VenueService(db)
+    try:
+        return service.check_venue_availability(
+            venue_id=venue_id,
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+        )
+    except ValueError as exc:
+        err_msg = str(exc)
+        if "not found" in err_msg:
+            raise AppException(message=err_msg, status_code=status.HTTP_404_NOT_FOUND, code="VENUE_NOT_FOUND")
+        raise AppException(message=err_msg, status_code=status.HTTP_400_BAD_REQUEST, code="INVALID_TIMEFRAME")
+
+
+@router.post("/{venue_id}/suitability", response_model=VenueSuitabilityResult)
+def check_venue_suitability(
+    venue_id: str,
+    check_in: VenueSuitabilityCheck,
+    db: Session = Depends(get_db_session),
+):
+    """Factual deterministic suitability evaluation of a venue against operational requirements."""
+    service = VenueService(db)
+    try:
+        return service.check_venue_suitability(venue_id, check_in)
+    except ValueError as exc:
+        err_msg = str(exc)
+        if "not found" in err_msg:
+            raise AppException(message=err_msg, status_code=status.HTTP_404_NOT_FOUND, code="VENUE_NOT_FOUND")
+        raise AppException(message=err_msg, status_code=status.HTTP_400_BAD_REQUEST, code="INVALID_REQUIREMENTS")

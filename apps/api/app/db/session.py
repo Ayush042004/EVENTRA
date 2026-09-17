@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 from app.core.config import settings
 from app.core.logging import logger
+from app.db.base import Base
 
 # Create SQLAlchemy engine with connection pool settings
 engine = create_engine(
