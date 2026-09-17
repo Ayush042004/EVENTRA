@@ -5,17 +5,13 @@ This is a living status document tracking the active engineering state of EVENTR
 ---
 
 ## Overall Status
-**STATUS:** Phase 2 Complete — Event Specification & Domain Intelligence implemented and verified.
+**STATUS:** Repository scaffolding completed. Ready for incremental implementation.
 
-**CURRENT PHASE:** PHASE 2 COMPLETE
-
-**NEXT PHASE:** PHASE 3 — VENUE + PROVIDER NETWORK
+**CURRENT PHASE:** Phase 0 Complete — Monorepo Architecture & Scaffolding Finished
 
 ---
 
 ## Completed
-
-### Phase 0 & Scaffolding
 - [x] Product architecture & core operational loop defined (`.agents/PROJECT_CONTEXT.md`, `ARCHITECTURE.md`)
 - [x] MVP feature taxonomy and architectural homes finalized (`.agents/FEATURE_SCOPE.md`)
 - [x] 25 Non-negotiable engineering rules codified (`.agents/ENGINEERING_RULES.md`)
@@ -32,45 +28,22 @@ This is a living status document tracking the active engineering state of EVENTR
 - [x] Shared packages created (`packages/contracts/`, `packages/config/`)
 - [x] Frontend PWA folder structure and stubs established (`apps/web/`)
 - [x] Backend architecture scaffolded (`apps/api/`: models, schemas, routes, engines, services, agent, domains, integrations, seeds, tests)
-
-### Phase 2: Event Specification + Domain Intelligence
-- [x] Domain Architecture Implemented:
-  - Base Domain contract (`BaseEventDomain` in `apps/api/app/domains/base.py`) defining `baseline_requirements()`, `baseline_tasks()`, `baseline_dependencies()`, and `provider_categories()`.
-  - Domain Typed Primitives (`apps/api/app/domains/types.py`): `RequirementDefinition`, `TaskDefinition`, `DependencyDefinition`, `ProviderCategoryDefinition`, `EventType`, `DependencyType`, `ObjectivePriority`, `EventStatus`.
-  - Domain Registry (`apps/api/app/domains/registry.py`): Central factory resolving `EventType -> BaseEventDomain` with `UnsupportedEventTypeException` and extensible registration.
-- [x] Specialized Event Domain Implementations:
-  - **WeddingDomain** (`apps/api/app/domains/wedding/`): 11 baseline requirements, 11 baseline tasks, 13 operational dependencies, and 8 provider categories.
-  - **CollegeFestDomain** (`apps/api/app/domains/college_fest/`): 10 baseline requirements, 11 baseline tasks, 15 operational dependencies, and 10 provider categories.
-  - **ConferenceDomain** (`apps/api/app/domains/conference/`): 11 baseline requirements, 12 baseline tasks, 17 operational dependencies, and 8 provider categories.
-- [x] Normalized Event Specification Schema & Service:
-  - `EventSpecification`, `ConstraintDefinition`, `ObjectiveDefinition` in `apps/api/app/schemas/specification.py`.
-  - `SpecificationService` in `apps/api/app/services/specification_service.py` synthesizing domain baselines with event-specific configuration, requirement overrides/additions, constraints, and objectives.
-- [x] Deterministic Validation:
-  - Date sanity checks (`end_time > start_time`).
-  - Guest count scalar non-negative check.
-  - Dependency graph integrity (every predecessor and successor exists in baseline tasks).
-  - Rejection of self-dependencies and duplicate dependency edges.
-  - Structural constraint and objective validation.
-  - 100% deterministic (zero random numbers, zero timestamps inside baselines, zero LLM calls).
-- [x] API Specification Preview / Read Endpoints:
-  - `GET /api/events/{event_id}/specification` (read preview from demo/database state).
-  - `POST /api/events/specification/preview` (read preview without mutation).
-- [x] Verification & Tests:
-  - Unit tests for DomainRegistry, domain outputs, dependency validation, SpecificationService, determinism, and future extensibility.
-  - Integration tests for specification endpoints.
-  - 41/41 tests passing with `pytest`.
-  - Bytecode compilation passed with `compileall`.
-  - FastAPI application startup verified (27 routes).
+- [x] Python backend verified (`python -m compileall apps/api` passed with 0 errors)
 
 ---
 
-## Known Limitations
-- Planning engine (Phase 4 / Phase 6) is not yet implemented; tasks have nominal duration/phase metadata but no scheduled timestamps or assigned vendor instances.
-- Concrete database persistence for compiled Task and Dependency entities will occur in downstream phases (Phase 4/6).
+## In Progress
+- [ ] Preparation for Phase 01: Database Model Implementation
 
 ---
 
 ## Next Steps
-1. Proceed to **PHASE 3 — VENUE + PROVIDER NETWORK**
-2. Venue schema, geospatial filtering, driving distance & ETA integration.
-3. Provider network catalog and service assignment bindings.
+1. Configure SQLAlchemy models and Alembic migrations (`apps/api/app/models/`)
+2. Set up local PostgreSQL connection and verify schema migrations
+3. Implement Phase 01 Database Models and relationships
+4. Proceed to Phase 02: Event Setup
+
+---
+
+## Not Yet Implemented
+Application business logic (Phase 01 through Phase 20). Scaffolding provides interfaces and boundaries only; no fake or mock functionality has been added.
