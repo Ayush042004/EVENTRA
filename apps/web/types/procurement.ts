@@ -1,1 +1,1 @@
-export {};
+export * from "@eventra/contracts/procurement";

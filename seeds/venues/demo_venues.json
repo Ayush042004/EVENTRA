@@ -1,0 +1,89 @@
+[
+  {
+    "id": "vnu-001-del-grand",
+    "name": "Grand Imperial Ballroom",
+    "address": "Connaught Place, Central Delhi",
+    "city": "Delhi",
+    "latitude": 28.6315,
+    "longitude": 77.2167,
+    "capacity": 1000,
+    "venue_type": "banquet_hall",
+    "contact_email": "events@grandimperial.demo",
+    "contact_phone": "+91-11-23456789",
+    "hourly_rate": 250.0,
+    "amenities": ["parking", "wifi", "ac", "av_setup", "power_backup"],
+    "status": "ACTIVE",
+    "availabilities": [
+      {
+        "start_datetime": "2026-10-15T08:00:00",
+        "end_datetime": "2026-10-15T23:00:00",
+        "status": "BOOKED",
+        "notes": "Corporate Annual Gala (Reserved)"
+      }
+    ]
+  },
+  {
+    "id": "vnu-002-blr-cyber",
+    "name": "CyberTech Convention Center",
+    "address": "Outer Ring Road, Bellandur",
+    "city": "Bengaluru",
+    "latitude": 12.9260,
+    "longitude": 77.6762,
+    "capacity": 1500,
+    "venue_type": "conference_center",
+    "contact_email": "ops@cybertechcenter.demo",
+    "contact_phone": "+91-80-45678901",
+    "hourly_rate": 450.0,
+    "amenities": ["parking", "wifi", "ac", "av_setup", "stage", "power_backup", "connectivity"],
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnu-003-del-grounds",
+    "name": "Open Horizon Festival Grounds",
+    "address": "Rohini Sector 24",
+    "city": "Delhi",
+    "latitude": 28.7290,
+    "longitude": 77.0860,
+    "capacity": 5000,
+    "venue_type": "open_ground",
+    "contact_email": "bookings@openhorizon.demo",
+    "contact_phone": "+91-11-34567890",
+    "hourly_rate": 600.0,
+    "amenities": ["parking", "stage", "power_backup"],
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnu-004-mum-heritage",
+    "name": "The Heritage Pavilion",
+    "address": "Colaba Waterfront",
+    "city": "Mumbai",
+    "latitude": 18.9067,
+    "longitude": 72.8147,
+    "capacity": 400,
+    "venue_type": "banquet_hall",
+    "contact_email": "heritage@pavilion.demo",
+    "contact_phone": "+91-22-22334455",
+    "hourly_rate": 180.0,
+    "amenities": ["parking", "ac", "wifi"],
+    "status": "ACTIVE",
+    "availabilities": []
+  },
+  {
+    "id": "vnu-005-blr-skyline",
+    "name": "Skyline Auditorium",
+    "address": "Koramangala 4th Block",
+    "city": "Bengaluru",
+    "latitude": 12.9352,
+    "longitude": 77.6245,
+    "capacity": 800,
+    "venue_type": "auditorium",
+    "contact_email": "info@skylineauditorium.demo",
+    "contact_phone": "+91-80-67890123",
+    "hourly_rate": 300.0,
+    "amenities": ["ac", "av_setup", "stage"],
+    "status": "INACTIVE",
+    "availabilities": []
+  }
+]
