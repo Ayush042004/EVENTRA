@@ -1,52 +1,50 @@
 """EVENTRA FastAPI Application Entrypoint"""
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import (
-    auth_router, events_router, setup_router, venues_router, vendors_router,
-    planning_router, tasks_router, schedule_router, budget_router, live_router,
-    incidents_router, impact_router, risk_router, recovery_router, approvals_router,
-    procurement_router, notifications_router, collaborators_router, analytics_router,
-    audit_router, verification_router, simulation_router
-)
+from app.core.config import settings
+from app.core.logging import setup_logging, logger
+from app.core.exceptions import register_exception_handlers
+from app.api.routes.health import router as health_router
 
+# Initialize application logging
+setup_logging()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan context manager for startup and shutdown hooks."""
+    logger.info(
+        "EVENTRA API starting up in %s environment (host=%s, port=%d)",
+        settings.ENVIRONMENT,
+        settings.API_HOST,
+        settings.API_PORT,
+    )
+    yield
+    logger.info("EVENTRA API shutting down.")
+
+
+# Create FastAPI application instance
 app = FastAPI(
-    title="EVENTRA Adaptive Event Operations API",
+    title=settings.PROJECT_NAME,
     description="Deterministic calculation engines and AI orchestration for live event operations.",
     version="0.1.0",
+    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
+    lifespan=lifespan,
 )
 
+# Configure CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register All Resource-Oriented Routers
-app.include_router(auth_router, prefix="/api")
-app.include_router(events_router, prefix="/api")
-app.include_router(setup_router, prefix="/api")
-app.include_router(venues_router, prefix="/api")
-app.include_router(vendors_router, prefix="/api")
-app.include_router(planning_router, prefix="/api")
-app.include_router(tasks_router, prefix="/api")
-app.include_router(schedule_router, prefix="/api")
-app.include_router(budget_router, prefix="/api")
-app.include_router(live_router, prefix="/api")
-app.include_router(incidents_router, prefix="/api")
-app.include_router(impact_router, prefix="/api")
-app.include_router(risk_router, prefix="/api")
-app.include_router(recovery_router, prefix="/api")
-app.include_router(approvals_router, prefix="/api")
-app.include_router(procurement_router, prefix="/api")
-app.include_router(notifications_router, prefix="/api")
-app.include_router(collaborators_router, prefix="/api")
-app.include_router(analytics_router, prefix="/api")
-app.include_router(audit_router, prefix="/api")
-app.include_router(verification_router, prefix="/api")
-app.include_router(simulation_router, prefix="/api")
+# Register Global Exception Handlers
+register_exception_handlers(app)
 
-@app.get("/health", tags=["health"])
-def health_check():
-    return {"status": "healthy", "service": "eventra-api", "version": "0.1.0"}
+# Mount Health Routes
+app.include_router(health_router)
