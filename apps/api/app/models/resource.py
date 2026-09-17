@@ -19,8 +19,10 @@ class Resource(Base):
     type = Column(String(100), nullable=False, index=True)  # EQUIPMENT, FACILITY, STAFF, MATERIAL, TRANSPORT
     quantity = Column(Integer, default=1, nullable=False)
     unit = Column(String(50), default="item", nullable=False)
-    status = Column(String(50), default="AVAILABLE", nullable=False)  # AVAILABLE, ALLOCATED, IN_USE, MAINTENANCE
+    status = Column(String(50), default="AVAILABLE", nullable=False)  # AVAILABLE, ALLOCATED, IN_USE, DEPLETED
+    allocated_task_id = Column(String(36), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now, nullable=False)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     event = relationship("Event", back_populates="resources")
+    allocated_task = relationship("Task", foreign_keys=[allocated_task_id])

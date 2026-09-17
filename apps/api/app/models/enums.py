@@ -90,3 +90,31 @@ class PermissionCategory(str, Enum):
     MINOR_CHANGE = "MINOR_CHANGE"
     CRITICAL_CHANGE = "CRITICAL_CHANGE"
     APPROVE = "APPROVE"
+
+
+class EventLifecycleState(str, Enum):
+    """Event lifecycle stages (separate from operational risk states)."""
+    DRAFT = "DRAFT"
+    SPECIFIED = "SPECIFIED"
+    PLANNED = "PLANNED"
+    LIVE = "LIVE"
+    INCIDENT = "INCIDENT"
+    EMERGENCY = "EMERGENCY"
+    CONCLUDED = "CONCLUDED"
+    CANCELLED = "CANCELLED"
+
+
+class BudgetItemStatus(str, Enum):
+    """Budget line item tracking status."""
+    PLANNED = "PLANNED"
+    COMMITTED = "COMMITTED"
+    PAID = "PAID"
+    CANCELLED = "CANCELLED"
+
+
+class ResourceStatus(str, Enum):
+    """Resource allocation status."""
+    AVAILABLE = "AVAILABLE"
+    ALLOCATED = "ALLOCATED"
+    IN_USE = "IN_USE"
+    DEPLETED = "DEPLETED"

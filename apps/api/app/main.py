@@ -9,6 +9,10 @@ from app.api.routes.health import router as health_router
 from app.api.routes.events import router as events_router
 from app.api.routes.venues import router as venues_router
 from app.api.routes.vendors import router as vendors_router
+from app.api.routes.planning import router as planning_router
+from app.api.routes.schedule import router as schedule_router
+from app.api.routes.budget import router as budget_router
+from app.api.routes.live import router as live_router
 
 # Initialize application logging
 setup_logging()
@@ -58,3 +62,13 @@ app.include_router(events_router, prefix=settings.API_V1_STR)
 # Mount Phase 3 Venue and Provider Network Routes
 app.include_router(venues_router, prefix=settings.API_V1_STR)
 app.include_router(vendors_router, prefix=settings.API_V1_STR)
+
+# Mount Phase 4 Planning Routes
+app.include_router(planning_router, prefix=settings.API_V1_STR)
+
+# Mount Phase 5 Schedule and Budget Routes
+app.include_router(schedule_router, prefix=settings.API_V1_STR)
+app.include_router(budget_router, prefix=settings.API_V1_STR)
+
+# Mount Phase 6 Live State Routes
+app.include_router(live_router, prefix=settings.API_V1_STR)

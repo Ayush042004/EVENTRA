@@ -1,7 +1,7 @@
 """SQLAlchemy Model: TaskDependency"""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint, CheckConstraint
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import relationship, validates
 from app.db.base import Base
 from app.models.enums import DependencyType
@@ -19,6 +19,7 @@ class TaskDependency(Base):
     predecessor_task_id = Column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     successor_task_id = Column(String(36), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     dependency_type = Column(String(50), default=DependencyType.FINISH_TO_START.value, nullable=False)
+    lag_minutes = Column(Integer, default=0, nullable=False)  # Buffer time between predecessor finish and successor start
     created_at = Column(DateTime, default=utc_now, nullable=False)
 
     __table_args__ = (
