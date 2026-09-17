@@ -1,38 +1,105 @@
-"""Domain Wedding - Baseline Specification and Provider Categories"""
-from typing import Dict, List, Any
-from app.domains.base import BaseEventDomain
+"""Wedding domain baseline requirements and provider categories."""
+from typing import List
+from app.domains.types import RequirementDefinition
 
+WEDDING_REQUIREMENTS: List[RequirementDefinition] = [
+    RequirementDefinition(
+        key="wedding.venue",
+        category="VENUE",
+        name="Wedding Venue",
+        description="Physical space for ceremony, reception, and guest hospitality",
+        is_mandatory=True,
+        parameters={"indoor_outdoor": "indoor_or_outdoor", "minimum_duration_hours": 6},
+    ),
+    RequirementDefinition(
+        key="wedding.power",
+        category="EQUIPMENT",
+        name="Event Power Supply",
+        description="Stable electrical power infrastructure and backup generator",
+        is_mandatory=True,
+        parameters={"backup_generator_required": True},
+    ),
+    RequirementDefinition(
+        key="wedding.catering",
+        category="CATERING",
+        name="Wedding Catering & Dining",
+        description="Food service, beverage stations, and dining service staff",
+        is_mandatory=True,
+        parameters={"meal_service_type": "plated_or_buffet"},
+    ),
+    RequirementDefinition(
+        key="wedding.decoration",
+        category="DECOR",
+        name="Floral & Stage Decoration",
+        description="Floral arrangements, aisle runner, backdrop, and table centerpieces",
+        is_mandatory=True,
+        parameters={"floral_styling": "custom"},
+    ),
+    RequirementDefinition(
+        key="wedding.photography",
+        category="PHOTOGRAPHY",
+        name="Wedding Photography",
+        description="Dedicated wedding photographers covering ceremony and reception",
+        is_mandatory=True,
+        parameters={"photographers_count": 2},
+    ),
+    RequirementDefinition(
+        key="wedding.videography",
+        category="VIDEOGRAPHY",
+        name="Cinematic Videography",
+        description="Video coverage and highlight reel production",
+        is_mandatory=False,
+        parameters={"drone_coverage": False},
+    ),
+    RequirementDefinition(
+        key="wedding.music",
+        category="ENTERTAINMENT",
+        name="Music & Entertainment",
+        description="Live band or DJ sound system for ceremony and dancing",
+        is_mandatory=True,
+        parameters={"pa_system": True},
+    ),
+    RequirementDefinition(
+        key="wedding.seating",
+        category="LOGISTICS",
+        name="Guest Seating Arrangements",
+        description="Chairs, banquet tables, linens, and reserved seating for family",
+        is_mandatory=True,
+        parameters={"linens_included": True},
+    ),
+    RequirementDefinition(
+        key="wedding.lighting",
+        category="LIGHTING",
+        name="Atmospheric Lighting",
+        description="Warm ambient lighting, spotlights for couple, and dance floor illumination",
+        is_mandatory=True,
+        parameters={"ambient_lighting": True},
+    ),
+    RequirementDefinition(
+        key="wedding.transportation",
+        category="LOGISTICS",
+        name="Wedding Party Transportation",
+        description="Bridal car, family shuttles, and guest parking logistics",
+        is_mandatory=False,
+        parameters={"valet_parking": False},
+    ),
+    RequirementDefinition(
+        key="wedding.ceremony",
+        category="CEREMONY",
+        name="Ceremony Essentials",
+        description="Ritual altar, officiant stage, and ceremonial assets",
+        is_mandatory=True,
+        parameters={"officiant_mic": True},
+    ),
+]
 
-class WeddingDomain(BaseEventDomain):
-    """Domain intelligence baseline for Wedding operations."""
-
-    def baseline_requirements(self) -> List[Dict[str, Any]]:
-        return [
-            {"category": "venue", "name": "Ceremony & Reception Space", "mandatory": True},
-            {"category": "catering", "name": "Dinner & Beverage Catering", "mandatory": True},
-            {"category": "decoration", "name": "Stage & Table Decor", "mandatory": True},
-            {"category": "photography", "name": "Full Day Photo & Video", "mandatory": True},
-        ]
-
-    def baseline_tasks(self) -> List[Dict[str, Any]]:
-        return [
-            {"name": "Venue Finalization", "phase": "PRE_EVENT"},
-            {"name": "Catering Menu Tasting", "phase": "PRE_EVENT"},
-            {"name": "Decor Setup", "phase": "DAY_OF"},
-        ]
-
-    def baseline_dependencies(self) -> List[Dict[str, Any]]:
-        return [
-            {"predecessor": "Venue Finalization", "successor": "Decor Setup"},
-        ]
-
-    def provider_categories(self) -> List[str]:
-        return [
-            "catering",
-            "decoration",
-            "photography",
-            "videography",
-            "music",
-            "lighting",
-            "transportation",
-        ]
+WEDDING_PROVIDER_CATEGORIES: List[str] = [
+    "catering",
+    "decoration",
+    "photography",
+    "videography",
+    "music",
+    "lighting",
+    "transportation",
+    "venue",
+]

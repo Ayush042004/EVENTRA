@@ -5,85 +5,116 @@ This is a living status document tracking the active engineering state of EVENTR
 ---
 
 ## Overall Status
-**STATUS:** PHASE 1 COMPLETE
+**STATUS:** PHASE 2 COMPLETE
 
-**CURRENT PHASE:** PHASE 1 — Foundational Relational Domain Model (Completed)
+**CURRENT PHASE:** PHASE 2 — Event Specification + Domain Intelligence (Completed)
 
 ---
 
-## Phase 1 Implementation Details
+## Phase 2 Implementation Details
 
-### 1. Foundational Domain Entities Implemented
-- **User**: Foundational identity model (`id`, `name`, `email` [unique, indexed], `created_at`, `updated_at`, `owned_events`, `memberships`).
-- **Event**: Authoritative root aggregate (`id`, `owner_id` [FK `users.id`], `name`, `description`, `event_type`, `location`, `start_datetime`, `end_datetime`, `guest_count`, `state` [NORMAL, AT_RISK, CRITICAL, EMERGENCY, RECOVERY], `total_budget`, `currency`, `created_at`, `updated_at`).
-  - Strict deliberate cascade lifecycles defined for child entities.
-- **EventMember**: Scoped event membership (`id`, `event_id` [FK `events.id`], `user_id` [FK `users.id`], `role` [MAIN_ORGANIZER, EVENT_MANAGER, COLLABORATOR, VENDOR, VIEWER], `role_id` [FK `roles.id`], `created_at`, `updated_at`, `UniqueConstraint(event_id, user_id)`).
-- **Role & Permission**: Controlled RBAC foundation (`roles`, `permissions`, and `role_permissions` association table supporting categories VIEW, MINOR_CHANGE, CRITICAL_CHANGE, APPROVE).
-- **Requirement**: Event requirement model (`id`, `event_id`, `type`, `name`, `description`, `value` [JSON], `required` [boolean], `created_at`, `updated_at`).
-- **Constraint**: Hard/soft constraint model (`id`, `event_id`, `type`, `name`, `description`, `value` [JSON], `severity` [HARD, SOFT], `created_at`, `updated_at`).
-- **Objective**: Event objective model (`id`, `event_id`, `type`, `name`, `description`, `priority` [CRITICAL, HIGH, MEDIUM, LOW, FLEXIBLE], `target_value` [JSON], `created_at`, `updated_at`).
-- **Venue**: Foundational venue representation with physical capacity, location, rates, and amenities.
-- **Vendor / Provider**: Provider catalog entity with operational category, location, contact, and rates.
-- **VendorAssignment**: Binding vendor to event with status and agreed cost.
-- **Task**: Operational task entity (`id`, `event_id`, `name`, `description`, `status`, `priority`, `planned_start`, `planned_end`, `actual_start`, `actual_end`, `created_at`, `updated_at`).
-- **TaskDependency**: Adjacency graph edges (`id`, `event_id`, `predecessor_task_id`, `successor_task_id`, `dependency_type`, `created_at`, `UniqueConstraint(predecessor, successor)`, `CheckConstraint(predecessor != successor)`, Python validator preventing self-dependencies).
-- **Resource**: Physical and logistical resources (`id`, `event_id`, `name`, `type`, `quantity`, `unit`, `status`, `created_at`, `updated_at`).
-- **BudgetItem**: Financial tracking using exact `Decimal`/`Numeric(12, 2)` monetary semantics (`id`, `event_id`, `name`, `category`, `estimated_amount`, `actual_amount`, `currency`, `status`, `created_at`, `updated_at`).
+### 1. Domain Architecture Implemented
+- **Base Domain Contract (`app/domains/base.py`)**:
+  - `BaseEventDomain(ABC)`: Abstract contract requiring `event_type`, `baseline_requirements()`, `baseline_tasks()`, `baseline_dependencies()`, and `provider_categories()`.
+  - Built-in `validate_baseline()`: Deterministic validation asserting unique task keys, valid predecessor/successor endpoints, self-dependency rejection, and duplicate edge prevention.
+- **Typed Domain Definitions (`app/domains/types.py`)**:
+  - `RequirementDefinition`: Stable key, operational category, name, description, mandatory flag, parameters.
+  - `TaskDefinition`: Stable key, name, description, priority (`TaskPriority`), phase, required provider category, critical flag (`is_critical`), duration estimate.
+  - `DependencyDefinition`: Predecessor key, successor key, dependency type (`DependencyType`), lag minutes.
+  - `ProviderCategoryDefinition`: Category code, display name, description, required flag.
+  - `ObjectivePriority`: Controlled priority classification.
 
-### 2. Database Migrations
-- **Migration Name**: `0002_phase1_foundational_domain_model.py` (Revision ID: `0002_phase1`, Revises: `0001_phase3`).
-- Generates clean, transactional DDL for PostgreSQL and batch-mode SQLite.
-- Supports complete symmetric upgrade and downgrade.
+### 2. Supported Event Types
+1. **WEDDING (`app/domains/wedding/`)**:
+   - Baseline requirements: Venue, catering, decoration, photography, videography, music/entertainment, guest seating, lighting, power, ceremony.
+   - Baseline tasks: Venue preparation, power infrastructure setup, decor setup, seating setup, catering setup, sound & music setup, ceremony prep, sound check, photo & video setup, guest area prep, readiness check.
+   - Baseline dependencies: Logical ordering from venue access through power, sound check, and final readiness check.
+   - Provider categories: Catering, decoration, photography, videography, music, lighting, transportation, venue.
+2. **COLLEGE_FEST (`app/domains/college_fest/`)**:
+   - Baseline requirements: Festival grounds, concert stages, high-voltage power distribution, concert sound reinforcement, stage lighting, security/crowd control, registration/check-in hubs, catering, heavy equipment.
+   - Baseline tasks: Ground clearance & prep, 3-phase power distribution, stage construction, truss rigging & equipment mounting, concert sound rigging, stage lighting & effects setup, security perimeter setup, registration booths setup, catering setup, technical checks, final readiness signoff.
+   - Baseline dependencies: Structural dependencies from stage/power through rigging, sound/lighting, technical checks, and readiness signoff.
+   - Provider categories: Sound, lighting, stage, security, power, equipment, catering, venue, decoration.
+3. **CONFERENCE (`app/domains/conference/`)**:
+   - Baseline requirements: Convention hall/auditorium, executive seating, keynote stage & lectern, professional AV system, speech & Q&A microphones, 4K LED/displays, high-density enterprise Wi-Fi connectivity, badge printing registration, executive catering, digital signage, clean power grid.
+   - Baseline tasks: Venue access & hall handover, AV clean power distribution, auditorium seating setup, keynote stage setup, audio system installation, wireless mic pairing, display & LED wall calibration, registration kiosk setup, Wi-Fi connectivity validation, catering setup, final technical rehearsal check, event readiness verification.
+   - Baseline dependencies: Interconnected dependencies verifying power -> AV & displays -> microphone check -> final rehearsal -> readiness verification.
+   - Provider categories: AV, catering, stage, lighting, connectivity, internet, equipment, signage, venue, logistics.
 
-### 3. Pydantic Contracts
-- Clean request/response schemas in `app/schemas/`:
-  - `UserCreate`, `UserResponse`, `UserUpdate`
-  - `EventCreate`, `EventResponse`, `EventUpdate`
-  - `EventMemberCreate`, `EventMemberResponse`
-  - `RoleCreate`, `RoleResponse`, `PermissionResponse`
-  - `RequirementCreate`, `RequirementResponse`
-  - `ConstraintCreate`, `ConstraintResponse`
-  - `ObjectiveCreate`, `ObjectiveResponse`
-  - `TaskCreate`, `TaskResponse`, `TaskDependencyCreate`, `TaskDependencyResponse`
-  - `ResourceCreate`, `ResourceResponse`
-  - `BudgetItemCreate`, `BudgetItemResponse`
+### 3. Domain Registry (`app/domains/registry.py`)
+- `DomainRegistry`: Central registry mapping canonical `EventType` to domain instances.
+- Auto-registers `WeddingDomain`, `CollegeFestDomain`, and `ConferenceDomain` upon initialization.
+- `get_domain(event_type)`: Resolves domain handlers via enum or normalized string ("wedding", "COLLEGE_FEST", "conference").
+- Strict error handling: Unsupported event types raise `UnsupportedEventTypeException` listing supported options; no silent fallback to generic domains.
+- Future extensibility: New event domains (e.g. `FestivalDomain`) can be added by implementing `BaseEventDomain` and registering in `DomainRegistry` without touching any core logic.
 
-### 4. Minimal Persistence Service & API Endpoints
-- **Service**: `EventService` in `app/services/event_service.py` providing CRUD operations and invariant enforcement for all Phase 1 domain entities without implementing premature business engines.
-- **API Endpoints**:
-  - `POST /api/events`: Create event with authoritative owner.
-  - `GET /api/events/{event_id}`: Retrieve event details.
-  - `POST /api/events/{event_id}/members`: Add collaborator to event.
-  - `GET /api/events/{event_id}/members`: List event members.
+### 4. Normalized Event Specification (`app/schemas/specification.py`)
+- `EventSpecification`: Complete serializable, deterministic specification containing:
+  - Event identity, title, description, event type, status, start/end datetimes, scalar guest capacity, budget, currency, location.
+  - Merged domain baseline and custom requirements.
+  - Baseline operational tasks and dependency DAG edges referencing stable task keys.
+  - Provider categories, operational constraints (`ConstraintDefinition`), and prioritized business objectives (`ObjectiveDefinition`).
+  - Custom configuration dictionary for domain-specific parameters.
+- `EventSpecificationPreviewRequest`: Schema enabling previewing event specifications prior to persistence.
 
-### 5. Tests Added
-- `tests/test_phase1_domain.py`: 13 comprehensive model integrity tests:
-  - User creation and unique email constraint.
-  - Event ownership and owner relationship.
-  - Event membership and duplicate membership prevention.
-  - Role and permission M2M association.
-  - Requirements, Constraints, Objectives event-parenting.
-  - Task creation and event binding.
-  - TaskDependency integrity: self-dependency rejection and duplicate edge prevention.
-  - Resource ownership and capacity tracking.
-  - BudgetItem monetary Decimal correctness without float distortion.
-  - VendorAssignment dual relationship loading.
-  - Cascade deletion lifecycle (deleting event cleans up all child elements).
-- `tests/test_migration.py`: Automated upgrade -> downgrade -> re-upgrade cycle testing against live SQLite schema engine.
-- `tests/integration/api/test_events_api.py`: Integration testing for event creation, membership assignment, duplicate rejection, and non-existent owner rejection.
-- `tests/unit/services/test_event_service.py`: Service-level lifecycle test across all domain entities.
+### 5. Event Specification Service (`app/services/specification_service.py`)
+- `SpecificationService`:
+  - Builds normalized `EventSpecification` from either raw dictionary payloads or Phase 1 SQLAlchemy `Event` ORM models.
+  - Combines domain baselines with event-specific requirement overrides and custom requirement additions.
+  - Preserves event-specific constraints and objectives.
+  - Standalone `validate_specification()` for deterministic structural validation.
+- Validation rules enforced:
+  - Valid supported event type.
+  - Logical date ordering (`end_time > start_time`).
+  - Non-negative scalar guest count.
+  - Dependency integrity: all predecessors and successors reference existing tasks; rejects self-dependencies and duplicate edges.
+  - Structural constraint and objective integrity.
 
-### 6. Verification Results
-- **Migrations**: PASS (`alembic upgrade head --sql` dry-run valid PostgreSQL DDL; upgrade, downgrade, re-upgrade cycle PASS).
-- **Tests**: PASS (46/46 tests passing).
-- **Startup**: PASS (FastAPI application starts up cleanly with lifespan hooks).
-- **Health**: PASS (`/health` returns HTTP 200 `healthy`).
+### 6. API Endpoints (`app/api/routes/events.py`)
+- `POST /api/events/specification/preview`: Preview an EventSpecification without database mutation.
+- `GET /api/events/{event_id}/specification`: Retrieve deterministic EventSpecification for existing database events or demo events (`wedding_demo`, `college_fest_demo`, `conference_demo`).
 
-### 7. Known Limitations
-- Authorization is foundational (ownership, membership, role enum); dynamic impact-aware permission evaluation is deferred to Phase 9.
-- Domain engines (planning, dependency DAG cycle detection, schedule algebra, recovery) are deliberately not implemented per Phase 1 scope boundaries.
+### 7. Tests Added (Phase 2 Test Suite)
+- `tests/unit/domains/test_domain_registry.py`:
+  - Resolution of canonical enum event types (`WEDDING`, `COLLEGE_FEST`, `CONFERENCE`).
+  - Resolution with string casing and hyphen normalization.
+  - Rejection of unsupported event types with `UnsupportedEventTypeException`.
+  - Extensibility: dynamically registering a new `MusicFestivalDomain` without core modifications.
+- `tests/unit/domains/test_domain_output.py`:
+  - Baseline requirements, tasks, dependencies, and provider categories for all 3 domains.
+  - Verification of distinct operational profiles (Wedding != Fest != Conference).
+- `tests/unit/domains/test_dependency_validation.py`:
+  - Valid task dependency DAG edges.
+  - Rejection of self-dependencies.
+  - Rejection of unknown predecessor and successor keys.
+  - Rejection of duplicate dependency edges and duplicate task keys.
+- `tests/unit/services/test_specification_service.py`:
+  - Building specifications for Wedding, College Fest, Conference.
+  - Requirement override (e.g. making mandatory requirement optional) and custom requirement additions.
+  - Preservation of constraints and objectives.
+  - Validation rejections: invalid dates (`end <= start`), negative guest count, unsupported event type.
+  - Determinism verification: identical inputs produce identical outputs with no drift.
+  - Seamless conversion from SQLAlchemy `Event` ORM models with child relationships.
+- `tests/integration/api/test_specification_api.py`:
+  - `GET /api/events/{event_id}/specification` for demo events and database-persisted events.
+  - `GET /api/events/{event_id}/specification` 404 handling.
+  - `POST /api/events/specification/preview` with custom requirements, constraints, objectives.
+  - Validation error handling (400 Bad Request with standardized `AppException` error payload) for date violations, unsupported types, and negative capacity.
+
+### 8. Verification Results
+- **Full Test Suite**: PASS (76/76 tests passing: 46 Phase 1 tests + 30 Phase 2 tests).
+- **Phase 2 Unit & Integration Tests**: PASS (30/30 passing in 0.24s).
+- **Bytecode Compilation (`compileall`)**: PASS (0 errors).
+- **FastAPI Startup & Routes**: PASS (All API routes mounted cleanly under `/api` prefix).
+- **Health**: PASS (`/health` returns HTTP 200).
+
+### 9. Known Limitations
+- Scheduling, timestamps, and resource allocation are deliberately not computed (deferred to Phase 4 Planning Engine).
+- Provider matching and venue search are not performed (deferred to Phase 3 Venue + Provider Network).
+- Risk scoring, dependency impact analysis, and incident recovery are deferred to later phases.
+- Purely deterministic; no LLM, LangGraph, or external API dependencies.
 
 ---
 
 ## Next Phase
-**NEXT PHASE = PHASE 2 — EVENT SPECIFICATION + DOMAIN INTELLIGENCE**
+**NEXT PHASE = PHASE 3 — VENUE + PROVIDER NETWORK**

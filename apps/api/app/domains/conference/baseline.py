@@ -1,39 +1,107 @@
-"""Domain Conference - Baseline Specification and Provider Categories"""
-from typing import Dict, List, Any
-from app.domains.base import BaseEventDomain
+"""Conference domain baseline requirements and provider categories."""
+from typing import List
+from app.domains.types import RequirementDefinition
 
+CONFERENCE_REQUIREMENTS: List[RequirementDefinition] = [
+    RequirementDefinition(
+        key="conference.venue",
+        category="VENUE",
+        name="Conference Center / Auditorium",
+        description="Acoustically treated convention hall with keynote room and breakout suites",
+        is_mandatory=True,
+        parameters={"breakout_rooms_count": 3},
+    ),
+    RequirementDefinition(
+        key="conference.seating",
+        category="LOGISTICS",
+        name="Auditorium & Classroom Seating",
+        description="Ergonomic conference seating with writing surfaces and clear sightlines",
+        is_mandatory=True,
+        parameters={"theatre_style": True},
+    ),
+    RequirementDefinition(
+        key="conference.stage",
+        category="EQUIPMENT",
+        name="Keynote Stage & Lectern",
+        description="Elevated presentation stage with branded podium and comfort monitors",
+        is_mandatory=True,
+        parameters={"podium_included": True},
+    ),
+    RequirementDefinition(
+        key="conference.av",
+        category="EQUIPMENT",
+        name="Professional Audio Visual System",
+        description="Multi-channel audio mixing, digital signal processors, and speaker arrays",
+        is_mandatory=True,
+        parameters={"audio_recording": True},
+    ),
+    RequirementDefinition(
+        key="conference.microphones",
+        category="EQUIPMENT",
+        name="Speech & Presentation Microphones",
+        description="Wireless lapel/headset mics for keynotes and wireless handhelds for audience Q&A",
+        is_mandatory=True,
+        parameters={"lapel_mics": 4, "qa_handhelds": 4},
+    ),
+    RequirementDefinition(
+        key="conference.projector_display",
+        category="EQUIPMENT",
+        name="High-Resolution Displays / LED Wall",
+        description="Ultra-HD keynote video wall or high-lumen laser projectors with seamless matrix switcher",
+        is_mandatory=True,
+        parameters={"aspect_ratio": "16:9", "resolution": "4K"},
+    ),
+    RequirementDefinition(
+        key="conference.connectivity",
+        category="GENERAL",
+        name="Enterprise High-Density Wi-Fi",
+        description="Dedicated symmetric gigabit fiber connection supporting simultaneous attendee devices",
+        is_mandatory=True,
+        parameters={"bandwidth_mbps": 1000, "redundant_uplink": True},
+    ),
+    RequirementDefinition(
+        key="conference.registration",
+        category="GENERAL",
+        name="Registration & Badge Printing Hub",
+        description="Rapid self-service check-in kiosks, thermal badge printers, and lanyard distribution",
+        is_mandatory=True,
+        parameters={"kiosk_count": 4},
+    ),
+    RequirementDefinition(
+        key="conference.catering",
+        category="CATERING",
+        name="Executive Catering & Coffee Breaks",
+        description="Continuous barista coffee, buffet luncheon, and dietary-labeled refreshments",
+        is_mandatory=True,
+        parameters={"coffee_stations": 2},
+    ),
+    RequirementDefinition(
+        key="conference.signage",
+        category="GENERAL",
+        name="Digital & Directional Signage",
+        description="Digital wayfinding totems, printed agenda boards, and branded stage backdrop",
+        is_mandatory=True,
+        parameters={"digital_totems": 4},
+    ),
+    RequirementDefinition(
+        key="conference.power",
+        category="EQUIPMENT",
+        name="Stage & AV Clean Power Grid",
+        description="Surge-protected clean electrical distribution for AV equipment and attendee charging bars",
+        is_mandatory=True,
+        parameters={"clean_av_feed": True},
+    ),
+]
 
-class ConferenceDomain(BaseEventDomain):
-    """Domain intelligence baseline for Conference operations."""
-
-    def baseline_requirements(self) -> List[Dict[str, Any]]:
-        return [
-            {"category": "venue", "name": "Convention Center / Auditorium", "mandatory": True},
-            {"category": "av", "name": "Audio Visual & Projector Setup", "mandatory": True},
-            {"category": "connectivity", "name": "High-Density Dedicated WiFi", "mandatory": True},
-            {"category": "catering", "name": "Buffet Lunch & Coffee Breaks", "mandatory": True},
-            {"category": "signage", "name": "Directional & Sponsor Signage", "mandatory": True},
-        ]
-
-    def baseline_tasks(self) -> List[Dict[str, Any]]:
-        return [
-            {"name": "AV Testing", "phase": "SETUP"},
-            {"name": "WiFi Stress Test", "phase": "SETUP"},
-            {"name": "Registration Desk Setup", "phase": "PRE_EVENT"},
-        ]
-
-    def baseline_dependencies(self) -> List[Dict[str, Any]]:
-        return [
-            {"predecessor": "AV Testing", "successor": "Registration Desk Setup"},
-        ]
-
-    def provider_categories(self) -> List[str]:
-        return [
-            "av",
-            "catering",
-            "stage",
-            "lighting",
-            "connectivity",
-            "equipment",
-            "signage",
-        ]
+CONFERENCE_PROVIDER_CATEGORIES: List[str] = [
+    "av",
+    "catering",
+    "stage",
+    "lighting",
+    "connectivity",
+    "internet",
+    "equipment",
+    "signage",
+    "venue",
+    "logistics",
+]
