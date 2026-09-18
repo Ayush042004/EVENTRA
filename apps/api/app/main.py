@@ -14,6 +14,7 @@ from app.api.routes.schedule import router as schedule_router
 from app.api.routes.budget import router as budget_router
 from app.api.routes.live import router as live_router
 from app.api.routes.incidents import router as incidents_router
+from app.api.routes.recovery import router as recovery_router
 
 # Initialize application logging
 setup_logging()
@@ -76,3 +77,6 @@ app.include_router(live_router, prefix=settings.API_V1_STR)
 
 # Mount Phase 7 Incident, Impact, and Risk Routes
 app.include_router(incidents_router, prefix=settings.API_V1_STR)
+
+# Phase 8 returns calculated options only; it has no execution endpoint.
+app.include_router(recovery_router, prefix=settings.API_V1_STR)
