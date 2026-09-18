@@ -40,6 +40,25 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = "development-secret-key-change-in-production"
 
+    # Phase 12: Real-World Integrations Configuration
+    MAP_PROVIDER: str = "mock"  # "mock", "osrm", "openrouteservice", "google"
+    MAPS_API_KEY: Union[str, None] = None
+    MAPS_TIMEOUT_SECONDS: int = 5
+
+    NOTIFICATION_PROVIDER: str = "in_app"  # "in_app", "webhook", "mock"
+    NOTIFICATION_WEBHOOK_URL: Union[str, None] = None
+
+    COMMUNICATION_PROVIDER: str = "mock"  # "mock", "whatsapp"
+    WHATSAPP_ENABLED: bool = False
+    WHATSAPP_API_TOKEN: Union[str, None] = None
+    WHATSAPP_PHONE_NUMBER_ID: Union[str, None] = None
+    WHATSAPP_WEBHOOK_VERIFY_TOKEN: Union[str, None] = None
+
+    LLM_PROVIDER: str = "mock"  # "mock", "gemini", "openai"
+    LLM_MODEL: str = "gemini-1.5-pro"
+    LLM_API_KEY: Union[str, None] = None
+    LLM_TIMEOUT_SECONDS: int = 30
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
