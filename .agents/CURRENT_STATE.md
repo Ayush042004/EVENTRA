@@ -1,12 +1,11 @@
 # Current Development State: EVENTRA
-# Current Development State: EVENTRA
 
 This is a living status document tracking the active engineering state of EVENTRA.
 
 ---
 
 ## Overall Status
-**STATUS:** PHASE 11 COMPLETE
+**STATUS:** PHASE 12 COMPLETE
 
 **CURRENT PHASES COMPLETED:**
 - Phase 0: Project Architecture & Environment Foundation
@@ -21,103 +20,75 @@ This is a living status document tracking the active engineering state of EVENTR
 - Phase 9: Authorization, Collaboration, Approvals & Action Execution Engine
 - Phase 10: Verification Engine, Audit Trail, Activity History & Decision Tracing
 - Phase 11: Event Operations Agent, LangGraph Orchestration & Autonomous Decisioning
+- Phase 12: Real-World Integrations Layer (Maps, Notifications, WhatsApp/Communication, Directory Normalizers)
 
 ---
 
-## Phase 10: Verification, Audit, Decision Trace & State History
+## Phase 12: Real-World Integrations Architecture & Implementation
 
-### 1. Deterministic Verification Engine (`app/engines/verification/`)
-- **Master Engine (`verifier.py`)**: Coordinates multi-domain verification without rolling back already-committed actions. Enforces core operational rule: `ACTION SUCCESS != VERIFICATION SUCCESS`. Outputs status `VERIFIED`, `PARTIALLY_VERIFIED`, `FAILED`, or `STALE`.
-- **Objective Verifier (`objectives.py`)**: Compares pre/post status for critical and secondary event objectives. Evaluates restoration vs lingering risk based on task health, deadlines, and provider coverage.
-- **Schedule Verifier (`schedule.py`)**: Verifies DAG cycle freedom, finish-to-start precedence, event window boundaries, critical path slack, and vendor arrival ETA deadline breaches.
-- **Budget Verifier (`budget.py`)**: Strict financial verification using exact `Decimal` precision. Validates budget headroom, positive actual cost accounting, and hard budget cap invariants.
-- **Resource Verifier (`resources.py`)**: Verifies non-negative resource quantities, depleted inventory states, task allocation consistency, and capacity conflicts.
-- **Provider Verifier (`providers.py`)**: Validates vendor assignment confirmation, category match, availability, and strictly distinguishes database confirmation from real-world confirmation.
-- **Constraint Verifier (`constraints.py`)**: Enforces hard vs soft constraint evaluation (e.g. noise curfew, venue capacity, time windows).
-- **State Verifier (`state.py`)**: Re-runs Phase 7 `RiskCalculator` to compute post-action operational risk and maps target event state transitions (`NORMAL`, `AT_RISK`, `CRITICAL`).
+### 1. Architectural Invariants
+- **Strict Integration Boundaries**: External integrations provide capability and information; they **never** calculate or override authoritative domain values (budget arithmetic, schedule, dependencies, risk, recovery feasibility, permissions, approvals, or event state).
+- **Zero Leaked Secrets**: API keys, webhook verify tokens, and credentials are kept strictly in environment/settings (`app/core/config.py`). They are never logged, never returned in API responses, and strictly masked in `registry.get_status()`.
+- **Offline / Demo Resilience**: The system runs 100% reliably in development and test environments without third-party API keys using clean `Mock` fallbacks explicitly tagged with `source="MOCK"`.
+- **Notifications are Pure Outputs**: Dispatched notifications, webhooks, and messages never alter event operational state.
+- **LLM Provider Reuse**: Directly reused the Phase 11 `LLMProvider` architecture without building duplicate LLM pipelines.
 
-### 2. Observability Subsystem (`app/observability/`)
-- **Audit Subsystem (`audit.py`)**: Appends immutable audit records to `audit_records`. Enforces mandatory sanitization redacting passwords, secrets, tokens, and zero chain-of-thought storage.
-- **Activity History (`activity.py`)**: Synthesizes a unified, chronological, human-readable operational event stream from incidents, actions, approvals, state transitions, and verifications.
-- **Decision Trace (`decision_trace.py`)**: Constructs factual end-to-end decision traces linking `Incident -> Impact -> Risk -> Recovery -> Approval -> Execution -> Verification -> State`. Zero LLM chain-of-thought.
-- **State History (`state_history.py`)**: Read-only historical access to append-only `StateTransition` records.
+### 2. Integration Adapters (`app/integrations/`)
+- **Maps Provider (`app/integrations/maps/`)**:
+  - `MapProvider` protocol: `get_distance`, `get_route`, `geocode`.
+  - `MockMapsProvider`: Deterministic distance calculation (Haversine for coordinates, deterministic default for named locations), geocoding with hash-based coordinates, and route summaries with `source=IntegrationSource.MOCK`.
+  - `HTTPMapsProvider`: Production-ready HTTP client via `httpx` with timeout protection and safe fallback to mock.
+- **Notification Subsystem (`app/integrations/notifications/`, `app/services/notification_service.py`)**:
+  - `NotificationProvider` protocol: `send_notification`.
+  - `InAppNotificationProvider`: Delivers notifications and persists them to the `notifications` table.
+  - `WebhookNotificationProvider`: Dispatches alerts to external webhook URLs with timeout guards.
+  - `MockNotificationProvider`: In-memory recording tagged with `source=IntegrationSource.MOCK`.
+  - `NotificationService`: Domain orchestrator for operational alerts (`notify_incident`, `notify_risk_escalation`, `notify_approval_requested`, `notify_action_executed`, `notify_verification_completed`), audited via `AuditRecorder`.
+- **Provider Communication & WhatsApp (`app/integrations/communication/`, `app/integrations/whatsapp/`, `app/services/provider_communication_service.py`)**:
+  - `ProviderCommunicationProvider` protocol: `send_message`, `get_messages`, `receive_inbound`.
+  - `MockCommunicationProvider`: In-memory conversation history supporting bidirectional dispatch and simulated inbound replies.
+  - `WhatsAppAdapter`: Meta WhatsApp Cloud API integration (v19.0 endpoint), inbound webhook normalization, hub challenge validation (`verify_webhook_token`), and automatic fallback to mock when unconfigured.
+  - `ProviderCommunicationService`: Domain service orchestrating provider messages with structured audit logging.
+- **Directory Normalizers (`app/integrations/venues/`, `app/integrations/providers/`)**:
+  - `ExternalVenueAdapter`: Discovers external venue listings and normalizes them into EVENTRA domain representations without polluting database state.
+  - `ExternalProviderAdapter`: Queries external vendor catalogs and normalizes ratings, base costs, and categories.
+- **Central Registry (`app/integrations/registry.py`)**:
+  - `IntegrationRegistry`: Singleton factory providing cached access to maps, notifications, communication, venue discovery, provider directory, and LLM providers.
+  - `get_status()`: Operational health status reporting adapter modes (`REAL` vs `MOCK`) and configuration state while strictly masking all keys.
 
-### 3. Data Models & Database Migrations
-- **Models (`app/models/verification.py`, `app/models/audit.py`)**:
-  - `VerificationResult`: Foreign keys to `events`, `action_executions`, `recovery_options`, JSON sub-system results, failure reasons, warnings, risk scores, and state snapshot hash.
-  - `AuditRecord`: Immutable trail with actor ID/type, action name, action type, sanitized before/after states, impact level, and link IDs.
-- **Migration `0007_phase10_verification_audit.py`**: Fully reversible Alembic migration creating `verification_results` and `audit_records` tables with 9 indexes.
+### 3. Data Models & Database Migration
+- **Model (`app/models/notification.py`)**:
+  - `Notification`: Columns `id`, `event_id`, `notification_type`, `channel`, `recipient`, `title`, `message`, `payload`, `status`, `created_at`.
+- **Alembic Migration (`alembic/versions/0008_phase12_integrations_notifications.py`)**:
+  - Created `notifications` table with indexes on `event_id`, `notification_type`, and `status`.
+  - Verified clean upgrade and downgrade cycle.
 
-### 4. REST API Endpoints
-- **Verification (`app/api/routes/verification.py`)**:
-  - `POST /api/events/{event_id}/actions/{action_id}/verify`: Post-action deterministic verification (returns HTTP 201).
-  - `GET /api/events/{event_id}/verifications`: List event verifications with optional status filter.
-  - `GET /api/events/{event_id}/verifications/{verification_id}`: Retrieve single verification record.
-  - `POST /api/events/{event_id}/verifications/{verification_id}/reverify`: Re-evaluates verification on current world state.
-- **Observability (`app/api/routes/observability.py`)**:
-  - `GET /api/events/{event_id}/audit`: Query sanitized immutable audit trail with action filtering and pagination.
-  - `GET /api/events/{event_id}/activity`: Retrieve chronological human-readable activity feed.
-  - `GET /api/events/{event_id}/decision-trace`: Retrieve structured, factual decision traces.
-  - `GET /api/events/{event_id}/state-history`: Retrieve append-only state transition records.
-
----
-
-## Phase 11: Event Operations Agent & LangGraph Orchestration
-
-### 1. The Single Agent Architecture (`app/agent/`)
-- **Single Agent (`EventOperationsAgent`)**: Strictly ONE orchestrating agent sitting above the authoritative deterministic backend. No proliferation of uncoordinated sub-agents.
-- **State Schema (`state.py`)**: Minimal typed `AgentState` containing operational metadata, incident references, impact/risk results, recovery options, authorization and approval tickets, execution and verification outcomes.
-- **LangGraph StateGraph (`graph.py`)**: Implements the full operational loop:
-  `START -> OBSERVE -> INTERPRET -> INVESTIGATE -> GENERATE_OPTIONS -> VALIDATE_OPTIONS -> SELECT_OPTION -> AUTHORIZE -> [Approval Gate] -> EXECUTE -> VERIFY -> REEVALUATE -> END`.
-- **LLM Provider Abstraction (`provider.py`)**:
-  - `LLMProvider` abstract base interface.
-  - `RealLLMProvider`: invokes real LLMs (Gemini / OpenAI / LangChain compatible) when credentials exist.
-  - `MockLLMProvider`: deterministic test/offline fallback mock ensuring offline stability and 100% deterministic test execution.
-
-### 2. Backend Tool Integration (`app/agent/tools/operations_tools.py`)
-- **Strict Boundary**: The agent NEVER calculates authoritative operational figures (budgets, schedules, deadlines, slack, feasibility). All authoritative facts are queried from deterministic backend engines:
-  - `observe_event`: queries live state, task health, budget totals, and open incidents.
-  - `get_incidents`: lists active incidents.
-  - `analyze_impact`: delegates to Phase 7 `ImpactAnalyzer` / `IncidentService`.
-  - `calculate_risk`: delegates to Phase 7 `RiskCalculator` / `IncidentService`.
-  - `generate_recovery_options`: delegates to Phase 8 `RecoveryService.generate_recovery_options`.
-  - `validate_recovery_option`: checks Phase 8 feasibility and constraint reports.
-  - `check_action_authorization`: evaluates Phase 9 RBAC, scopes, and impact policy.
-  - `request_action_approval`: creates immutable approval request anchored to state snapshot.
-  - `check_approval_status`: authoritatively checks PostgreSQL approval status.
-  - `execute_action`: executes authorized mutations via Phase 9 `ActionService`.
-  - `verify_action`: validates operational recovery via Phase 10 `VerificationService`.
-  - `get_decision_trace`: extracts factual end-to-end decision traces via Phase 10 `DecisionTraceService`.
-
-### 3. Governance & Safe Approval Resume Flow
-- **Approval Safety Gate**: When an action requires human approval (e.g. collaborator modifying a critical-path task), the agent creates the approval request in Phase 9, sets state to `PENDING_APPROVAL`, and **safely terminates graph execution**. It does NOT execute the action or sleep.
-- **Pre-Approved Invariant**: `pre_approved` client flag cannot bypass Phase 9 authorization policy.
-- **Resume Mechanism**: Upon human sign-off (`status = "APPROVED"` in PostgreSQL), the agent is resumed with `approval_id`. It authoritatively verifies the DB approval record before executing.
-
-### 4. REST API Endpoint (`app/api/routes/agent.py`)
-- `POST /api/agent/events/{event_id}/run`:
-  - Accepts operator natural language message and optional `approval_id`.
-  - Returns structured operational telemetry, selected strategy, approval status, execution, verification, and human-readable operational response.
+### 4. REST API Endpoints (`app/api/routes/integrations.py`)
+- `GET /api/integrations/status`: Operational status of all adapters with masked secrets.
+- `POST /api/integrations/maps/distance`: Calculate transit distance and duration.
+- `POST /api/integrations/maps/geocode`: Resolve address coordinates.
+- `GET /api/integrations/whatsapp/webhook`: Meta WhatsApp webhook registration challenge.
+- `POST /api/integrations/whatsapp/webhook`: Inbound WhatsApp message receiver.
+- `POST /api/events/{event_id}/notifications`: Dispatch operational alert.
+- `GET /api/events/{event_id}/notifications`: Retrieve event notification history.
+- `POST /api/events/{event_id}/providers/{provider_id}/messages`: Dispatch message to vendor.
+- `GET /api/events/{event_id}/providers/{provider_id}/messages`: Retrieve conversation thread with vendor.
 
 ---
 
 ## Verification Results
-- **Full Test Suite**: PASS (240/240 tests passing in 7.04s).
-  - Phase 11 Unit Tests: 12 passed (`test_agent_orchestration.py` covering state initialization, observation, impact tool, risk tool, recovery option generation, infeasibility guard, authorization, approval pausing, approval resumption, post-execution verification, approval bypass protection, fake approval protection).
-  - Phase 11 Scenario Tests: 2 passed (`test_phase11_agent_scenarios.py` covering mandatory vendor no-show vertical slice and REST API endpoint integration).
-- **Core Invariants Enforced**:
-  - ZERO LLM authoritative calculation.
-  - ONE unified operations agent.
-  - STRICT separation of duties & approval gates.
-  - Action Success != Verification Success.
+- **Full Test Suite**: **PASS (253/253 tests passing in 8.24s)**.
+  - Phase 12 Unit Tests: 12 passed (`test_integrations.py` covering registry secret masking, mock maps distance/route, HTTP maps fallback, venue/provider directory normalizers, mock communication, WhatsApp token verification & webhook inbound normalization, NotificationService invariants, ProviderCommunicationService audit logging, and REST endpoints).
+  - Phase 12 Scenario Test: 1 passed (`test_phase12_integration_scenarios.py` covering the complete vertical slice: Incident $\to$ Maps ETA computation $\to$ Approval notification $\to$ Human sign-off $\to$ Action execution $\to$ Vendor WhatsApp dispatch & reply $\to$ Verification $\to$ Immutable audit trail with zero secret leakage).
+  - Alembic Migration Test: Passed full upgrade/downgrade cycle including `notifications` table.
 
 ---
 
 ## Known Limitations
-- Real LLM calls fall back to MockLLMProvider when no GEMINI_API_KEY or OPENAI_API_KEY is configured in the environment.
-- Single active incident prioritized per agent run (multi-incident prioritization is handled in sequence).
+- Real WhatsApp dispatch requires valid Meta developer credentials (`WHATSAPP_API_TOKEN` & `WHATSAPP_PHONE_NUMBER_ID`); safely defaults to `MockCommunicationProvider` when unconfigured.
+- Real maps routing requires Google Maps or OpenRouteService API keys; safely defaults to `MockMapsProvider` in offline/test mode.
 
 ---
 
 ## Next Phase
-**NEXT PHASE = PHASE 12 — CHANNELS, COLLABORATION & NOTIFICATION SUBSYSTEM**
+**NEXT PHASE = PHASE 13 — SIMULATION ENGINE & CHAOS INJECTION (or UI/PWA)**

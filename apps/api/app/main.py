@@ -20,6 +20,7 @@ from app.api.routes.actions import router as actions_router
 from app.api.routes.verification import router as verification_router
 from app.api.routes.observability import router as observability_router
 from app.api.routes.agent import router as agent_router
+from app.api.routes.integrations import router as integrations_router
 
 # Initialize application logging
 setup_logging()
@@ -96,5 +97,8 @@ app.include_router(observability_router, prefix=settings.API_V1_STR)
 
 # Phase 11: Single Event Operations Agent (LangGraph)
 app.include_router(agent_router, prefix=settings.API_V1_STR)
+
+# Phase 12: Real-World Integrations Layer (Maps, Notifications, Provider Communication)
+app.include_router(integrations_router, prefix=settings.API_V1_STR)
 
 
