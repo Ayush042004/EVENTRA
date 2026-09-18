@@ -53,6 +53,16 @@ class BadRequestException(AppException):
         )
 
 
+class ForbiddenException(AppException):
+    def __init__(self, message: str = "Access forbidden.", details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="FORBIDDEN",
+            details=details,
+        )
+
+
 class DatabaseUnavailableException(AppException):
     def __init__(self, message: str = "Database service is currently unavailable."):
         super().__init__(

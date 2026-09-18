@@ -5,7 +5,7 @@ This is a living status document tracking the active engineering state of EVENTR
 ---
 
 ## Overall Status
-**STATUS:** PHASE 6 COMPLETE
+**STATUS:** PHASE 7 COMPLETE
 
 **CURRENT PHASES COMPLETED:**
 - Phase 0: Project Architecture & Environment Foundation
@@ -15,75 +15,86 @@ This is a living status document tracking the active engineering state of EVENTR
 - Phase 4: Deterministic Planning Engine (Tasks, Dependencies, Resources, Budget Items)
 - Phase 5: Dependency Engine (DAG, CPM), Schedule Engine, Budget Engine (Decimal)
 - Phase 6: Live Event State Engine (Readiness, State Machine, Status Cascading, Deviations, Conclude)
+- Phase 7: Incident Detection, Impact Analysis Engine & Operational Risk Engine
 
 ---
 
-## Phases 4, 5, 6 Implementation Details
+## Phase 7: Incident Detection → Impact Analysis → Risk Engine
 
-### 1. Phase 4: Planning Engine
-- **Engines (`app/engines/planning/`)**:
-  - `TaskGenerator`: Converts domain baseline tasks into materializable task dictionaries with stable domain `key`, priority, phase, required provider category, and duration.
-  - `DependencyBuilder`: Maps domain dependency DAG edges to persisted task IDs with lag minutes.
-  - `ResourcePlanner`: Allocates equipment, facility, staff, material, and transport resources based on event requirements.
-  - `BudgetPlanner`: Proportionally allocates total event budget across provider categories, with 10% contingency and optional vendor cost overrides.
-  - `RequirementInterpreter`: Validates all mandatory requirements have matching allocated resources.
-- **Service (`app/services/planning_service.py`)**:
-  - `PlanningService`: Orchestrates full pipeline: `EventSpecification` → Tasks → Dependencies → Resources → Budget items → Transitions `lifecycle_state` to `PLANNED` → Records `StateTransition`.
-- **API (`app/api/routes/planning.py`)**:
-  - `POST /api/events/{event_id}/plan`: Generates operational plan.
-  - `GET /api/events/{event_id}/plan`: Retrieves operational plan.
+### 1. Incident Domain & Ingestion
+- **Enums (`app/models/enums.py`)**:
+  - `IncidentType`: `VENDOR_DELAY`, `VENDOR_NO_SHOW`, `VENUE_ISSUE`, `RESOURCE_SHORTAGE`, `CAPACITY_PROBLEM`, `SCHEDULE_DEVIATION`, `DEPENDENCY_FAILURE`.
+  - `IncidentStatus`: `OPEN`, `ACKNOWLEDGED`, `INVESTIGATING`, `RESOLVED`, `DISMISSED`.
+  - `IncidentSeverity`: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`, `EMERGENCY`.
+- **Data Model (`app/models/incident.py`)**:
+  - `Incident`: Operational model with foreign keys to `events`, `tasks`, `vendors`, `resources`, `venues`, JSON storage for `evidence_metadata`, `impact_result`, and `risk_result`, timestamps, and resolution tracking.
+  - Linked bidirectionally to `Event.incidents` with cascade delete-orphan.
+- **Pydantic Schemas (`app/schemas/incident.py`)**:
+  - `IncidentCreate`, `IncidentUpdate`, `IncidentResolveRequest`, `ImpactResultResponse`, `RiskResultResponse`, `IncidentResponse`, `IncidentListResponse`.
+- **Database Migration (`alembic/versions/0004_phase7_incident_impact_risk.py`)**:
+  - Creates `incidents` table with 8 indexes and foreign key constraints. Passes full upgrade and downgrade verification in `tests/test_migration.py`.
 
-### 2. Phase 5: Dependency, Schedule & Budget Engines
-- **Dependency Engine (`app/engines/dependency/`)**:
-  - `DependencyGraph`: Pure in-memory DAG supporting topological sort (Kahn's algorithm), cycle detection (DFS), and predecessor/successor/lag queries without database calls.
-  - `CriticalPathCalculator`: Pure Critical Path Method (CPM) using forward pass (earliest start/finish) and backward pass (latest start/finish) to calculate slack and identify zero-slack critical path tasks.
-- **Schedule Engine (`app/engines/schedule/`)**:
-  - `ScheduleEngine`: Forward-pass scheduling assigning concrete `planned_start` and `planned_end` datetimes respecting dependency order and lag.
-  - `ScheduleFeasibilityChecker`: Validates schedule fits within event start/end window, computing buffer minutes.
-  - `ScheduleAdjuster`: Propagates delays downstream through dependency graph, shifting dependent successors while leaving independent tasks unaffected.
-- **Budget Engine (`app/engines/budget/`)**:
-  - `BudgetCalculator`: Exact `Decimal` arithmetic computing estimated, actual, committed, and remaining totals, per-category breakdown, variance, and utilization percentage.
-  - `BudgetValidator`: Detects total estimated and actual overspend, as well as per-category spending cap violations.
-- **API Routes**:
-  - `POST /api/events/{event_id}/schedule/compute`: Computes and persists task schedule and critical path.
-  - `GET /api/events/{event_id}/schedule`: Retrieves schedule with feasibility and critical path.
-  - `GET /api/events/{event_id}/budget/summary`: Aggregated budget summary with variance.
-  - `GET /api/events/{event_id}/budget/validate`: Validates budget against total ceiling.
+### 2. Deterministic Impact Engine (`app/engines/impact/`)
+- **Propagation (`propagation.py`)**:
+  - Uses in-memory `DependencyGraph` to discover downstream indirect tasks via DAG traversal.
+  - Excludes upstream predecessors from downstream cascade.
+  - Flags blocked tasks (tasks where all upstream dependencies are not completed).
+- **Severity (`severity.py`)**:
+  - Pure deterministic `ImpactSeverityCalculator` evaluating critical path breach, downstream task count, time pressure, and critical objectives (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`).
+- **Analyzer (`analyzer.py`)**:
+  - Comprehensive `ImpactAnalyzer` evaluating direct vs indirect tasks, schedule consequences (consumed slack, remaining slack, critical path breach, deadline pressure), resource shortages, provider assignments, committed budget exposure, and strategic objective threats.
 
-### 3. Phase 6: Live State Engine
-- **State Engines (`app/engines/state/`)**:
-  - `EventStateMachine`: Validates and enforces lifecycle transitions: `DRAFT → SPECIFIED → PLANNED → LIVE → CONCLUDED`, rejects invalid transitions.
-  - `TransitionValidator`: Pre-flight readiness checks for go-live (planned tasks scheduled, none failed/cancelled) and conclude (no active tasks).
-  - `DeviationDetector`: Compares actual vs planned start/finish times (`LATE_START`, `LATE_FINISH`, `EARLY_FINISH`) and actual vs estimated budget spend.
-- **Service (`app/services/live_state_service.py`)**:
-  - `LiveStateService`:
-    - `go_live`: Validates readiness, transitions event to `LIVE`, and activates root tasks (`PENDING → READY`).
-    - `update_task_status`: Progresses tasks (`READY → IN_PROGRESS → COMPLETED`), records actual start/end datetimes, records transitions, and cascades `READY` status to downstream successor tasks.
-    - `get_live_state`: Aggregates operational snapshot, progress percentage, task breakdown, schedule deviations, and budget deviation.
-    - `conclude_event`: Concludes event after ensuring all tasks are finished.
-- **API (`app/api/routes/live.py`)**:
-  - `POST /api/events/{event_id}/go-live`: Transitions event to LIVE.
-  - `GET /api/events/{event_id}/live-state`: Retrieves operational snapshot.
-  - `PUT /api/events/{event_id}/tasks/{task_id}/status`: Updates task status and timing.
-  - `POST /api/events/{event_id}/conclude`: Concludes event.
+### 3. Pure Deterministic Risk Engine (`app/engines/risk/`)
+- **Classifier (`classifier.py`)**:
+  - Explicit threshold mapping without opaque scoring or AI confidence:
+    - 0 – 24.9: `LOW` risk → Target state `NORMAL`
+    - 25.0 – 49.9: `MEDIUM` risk → Target state `AT_RISK`
+    - 50.0 – 74.9: `HIGH` risk → Target state `CRITICAL`
+    - 75.0 – 100.0: `CRITICAL` risk → Target state `EMERGENCY`
+- **Calculator (`calculator.py`)**:
+  - Evaluates 8 explicit, explainable weighted factors:
+    1. Time remaining (weight 0.15)
+    2. Task criticality (weight 0.20)
+    3. Dependency count & depth (weight 0.15)
+    4. Schedule slack & critical path breach (weight 0.15)
+    5. Resource availability & shortage count (weight 0.10)
+    6. Provider network alternatives (weight 0.10)
+    7. Budget headroom & committed cost at risk (weight 0.05)
+    8. Strategic objective criticality (weight 0.10)
+  - Produces human-readable explanations for every factor score.
 
-### 4. Database Migrations
-- `0003_phase456_engines_and_live_state.py`:
-  - `events.lifecycle_state`: Lifecycle tracking (`DRAFT`, `SPECIFIED`, `PLANNED`, `LIVE`, `CONCLUDED`, `CANCELLED`).
-  - `tasks`: `key`, `duration_minutes`, `slack_minutes`, `is_critical_path`, `phase`, `required_provider_category`.
-  - `task_dependencies.lag_minutes`: Delay between predecessor finish and successor start.
-  - `resources.allocated_task_id`: Task-level resource association.
-  - `state_transitions`: Audit table tracking entity transitions across lifecycle and operational states.
+### 4. Service Layer (`app/services/incident_service.py`)
+- `IncidentService`:
+  - Enforces event-scoped RBAC authorization (rejects non-members with 403 `ForbiddenException`).
+  - Validates operational foreign entities (tasks, vendors, resources, venues) belonging to the event.
+  - Ingests and normalizes incidents.
+  - Executes Impact Analysis → Risk Engine in single transaction.
+  - Updates `Event.state` authoritatively and records audit trail in `StateTransition`.
+  - Escalates `Event.lifecycle_state` (`LIVE` → `INCIDENT` / `EMERGENCY`) on high/critical incidents.
+  - Supports deterministic re-evaluation (`recalculate_incident`) and resolution (`resolve_incident`) which restores `Event.state` to `NORMAL` when all active incidents are resolved.
 
-### 5. Verification Results
-- **Full Test Suite**: PASS (126/126 tests passing).
-- **Alembic Migrations**: PASS (0001 -> 0002 -> 0003 upgrade and downgrade cycle passing).
-- **FastAPI Startup & Routes**: PASS (All routes mounted cleanly under `/api` prefix).
-- **Health**: PASS (`/health` returns HTTP 200).
-- **Deterministic**: Zero LLM, zero LangGraph, zero external APIs used in calculation engines.
+### 5. API Routes (`app/api/routes/incidents.py`)
+- `POST /api/events/{event_id}/incidents`: Ingests incident, computes impact and risk, escalates state (201 Created).
+- `GET /api/events/{event_id}/incidents`: Lists incidents with status and type filters and pagination.
+- `GET /api/events/{event_id}/incidents/{incident_id}`: Retrieves single incident with full impact and risk results.
+- `GET /api/events/{event_id}/incidents/{incident_id}/impact`: Retrieves structured impact result.
+- `GET /api/events/{event_id}/incidents/{incident_id}/risk`: Retrieves structured risk evaluation with 8 factors.
+- `POST /api/events/{event_id}/incidents/{incident_id}/recalculate`: Deterministically recalculates impact and risk against live state.
+- `POST /api/events/{event_id}/incidents/{incident_id}/resolve`: Resolves incident and re-evaluates event state.
+
+---
+
+## Verification Results
+- **Full Test Suite**: PASS (147/147 tests passing).
+  - Unit tests: 75 passed (including `test_impact_engine.py`, `test_risk_engine.py`, `test_incident_service.py`).
+  - API integration tests: 31 passed (including `test_incidents_api.py` covering all 7 endpoints, 403 RBAC, 400 validation).
+  - Scenario integration tests: 4 passed (`test_phase7_scenarios.py` covering vendor no-show, vendor delay, resource shortage, multi-incident resolution).
+  - Domain & migration tests: 37 passed (`test_migration.py` full upgrade/downgrade cycle passing through revision 0004).
+- **FastAPI Startup & Routes**: PASS (Mounted cleanly under `/api`).
+- **Zero AI / Deterministic Rule**: STRICTLY ENFORCED. Zero LLM, zero LangGraph, zero external APIs.
 
 ---
 
 ## Next Phase
-**NEXT PHASE = PHASE 7 — INCIDENT → IMPACT → RISK**
+**NEXT PHASE = PHASE 8 — RECOVERY ENGINE**
 
