@@ -34,7 +34,8 @@ from app.models.action import ActionExecution
 from app.models.procurement import Procurement
 from app.models.resource import Resource
 from app.models.state_transition import StateTransition
-from app.models.audit import Audit
+from app.models.audit import Audit, AuditRecord
+from app.models.verification import VerificationResult
 from app.models.notification import Notification
 from app.models.requirement import Requirement
 from app.models.objective import Objective
@@ -80,6 +81,8 @@ __all__ = [
     "Resource",
     "StateTransition",
     "Audit",
+    "AuditRecord",
+    "VerificationResult",
     "Notification",
     "Requirement",
     "Objective",

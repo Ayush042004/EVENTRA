@@ -17,6 +17,8 @@ from app.api.routes.incidents import router as incidents_router
 from app.api.routes.recovery import router as recovery_router
 from app.api.routes.approvals import router as approvals_router
 from app.api.routes.actions import router as actions_router
+from app.api.routes.verification import router as verification_router
+from app.api.routes.observability import router as observability_router
 
 # Initialize application logging
 setup_logging()
@@ -86,4 +88,9 @@ app.include_router(recovery_router, prefix=settings.API_V1_STR)
 # Phase 9: Approvals and Operational Action Execution
 app.include_router(approvals_router, prefix=settings.API_V1_STR)
 app.include_router(actions_router, prefix=settings.API_V1_STR)
+
+# Phase 10: Verification and Observability (Audit, Activity, Decision Trace, State History)
+app.include_router(verification_router, prefix=settings.API_V1_STR)
+app.include_router(observability_router, prefix=settings.API_V1_STR)
+
 
