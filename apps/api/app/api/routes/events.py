@@ -4,14 +4,15 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_db_session
+from app.api.dependencies import get_db_session, get_current_user_id
 from app.services.event_service import EventService
+from app.services.collaboration_service import CollaborationService
 from app.services.specification_service import (
     SpecificationService,
     SpecificationValidationError,
 )
 from app.schemas.event import EventCreate, EventResponse
-from app.schemas.event_member import EventMemberCreate, EventMemberResponse
+from app.schemas.event_member import EventMemberCreate, EventMemberUpdate, EventMemberResponse
 from app.schemas.specification import (
     EventSpecification,
     EventSpecificationPreviewRequest,
@@ -139,10 +140,11 @@ def add_event_member(
     event_id: str,
     payload: EventMemberCreate,
     db: Session = Depends(get_db_session),
+    current_user_id: str = Depends(get_current_user_id),
 ):
-    """Adds a collaborator or member to the event."""
-    service = EventService(db)
-    member = service.add_event_member(event_id, payload)
+    """Adds a collaborator or member to the event with role authorization."""
+    service = CollaborationService(db)
+    member = service.add_member(event_id, payload, current_user_id=current_user_id)
     return member
 
 
@@ -150,10 +152,34 @@ def add_event_member(
 def list_event_members(
     event_id: str,
     db: Session = Depends(get_db_session),
+    current_user_id: str = Depends(get_current_user_id),
 ):
     """Lists all members/collaborators for an event."""
-    service = EventService(db)
-    event = service.get_event(event_id)
-    if not event:
-        raise NotFoundException(f"Event with id '{event_id}' not found.")
-    return service.get_event_members(event_id)
+    service = CollaborationService(db)
+    return service.list_members(event_id, current_user_id=current_user_id)
+
+
+@router.patch("/{event_id}/members/{member_id}", response_model=EventMemberResponse)
+def update_event_member(
+    event_id: str,
+    member_id: str,
+    payload: EventMemberUpdate,
+    db: Session = Depends(get_db_session),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Updates an event member's role (Organizers only)."""
+    service = CollaborationService(db)
+    return service.update_member_role(event_id, member_id, payload, current_user_id=current_user_id)
+
+
+@router.delete("/{event_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_event_member(
+    event_id: str,
+    member_id: str,
+    db: Session = Depends(get_db_session),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Removes a member from the event (Organizers only)."""
+    service = CollaborationService(db)
+    service.remove_member(event_id, member_id, current_user_id=current_user_id)
+    return None

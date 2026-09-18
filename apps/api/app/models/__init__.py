@@ -29,8 +29,8 @@ from app.models.task import Task
 from app.models.dependency import TaskDependency, Dependency
 from app.models.budget import BudgetItem, Budget
 from app.models.incident import Incident
-from app.models.recovery import Recovery
-from app.models.approval import Approval
+from app.models.approval import Approval, ApprovalRequest
+from app.models.action import ActionExecution
 from app.models.procurement import Procurement
 from app.models.resource import Resource
 from app.models.state_transition import StateTransition
@@ -74,6 +74,8 @@ __all__ = [
     "Incident",
     "Recovery",
     "Approval",
+    "ApprovalRequest",
+    "ActionExecution",
     "Procurement",
     "Resource",
     "StateTransition",
