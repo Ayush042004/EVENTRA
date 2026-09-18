@@ -19,6 +19,7 @@ from app.api.routes.approvals import router as approvals_router
 from app.api.routes.actions import router as actions_router
 from app.api.routes.verification import router as verification_router
 from app.api.routes.observability import router as observability_router
+from app.api.routes.agent import router as agent_router
 
 # Initialize application logging
 setup_logging()
@@ -92,5 +93,8 @@ app.include_router(actions_router, prefix=settings.API_V1_STR)
 # Phase 10: Verification and Observability (Audit, Activity, Decision Trace, State History)
 app.include_router(verification_router, prefix=settings.API_V1_STR)
 app.include_router(observability_router, prefix=settings.API_V1_STR)
+
+# Phase 11: Single Event Operations Agent (LangGraph)
+app.include_router(agent_router, prefix=settings.API_V1_STR)
 
 
