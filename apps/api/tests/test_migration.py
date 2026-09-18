@@ -51,6 +51,8 @@ def test_alembic_upgrade_downgrade_cycle():
             "recovery_options",
             "approvals",
             "action_executions",
+            "verification_results",
+            "audit_records",
         }
         assert expected_phase1_tables.issubset(tables), f"Missing tables: {expected_phase1_tables - tables}"
 

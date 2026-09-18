@@ -41,6 +41,20 @@ from app.schemas.action import (
     ActionSubmissionResponse,
 )
 from app.schemas.event_member import EventMemberUpdate
+from app.schemas.verification import (
+    VerificationResultResponse,
+    VerificationListResponse,
+    ReverifyRequest,
+)
+from app.schemas.observability import (
+    AuditRecordResponse,
+    AuditListResponse,
+    ActivityEntryResponse,
+    ActivityListResponse,
+    DecisionTraceResponse,
+    StateTransitionEntryResponse,
+    StateHistoryResponse,
+)
 
 __all__ = [
     "UserCreate",
@@ -90,4 +104,14 @@ __all__ = [
     "ActionExecutionResponse",
     "ActionSubmissionResponse",
     "EventMemberUpdate",
+    "VerificationResultResponse",
+    "VerificationListResponse",
+    "ReverifyRequest",
+    "AuditRecordResponse",
+    "AuditListResponse",
+    "ActivityEntryResponse",
+    "ActivityListResponse",
+    "DecisionTraceResponse",
+    "StateTransitionEntryResponse",
+    "StateHistoryResponse",
 ]
