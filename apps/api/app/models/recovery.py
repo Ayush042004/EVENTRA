@@ -43,3 +43,7 @@ class Recovery(Base):
 
     event = relationship("Event")
     incident = relationship("Incident")
+
+
+# Alias for backward compatibility
+RecoveryOption = Recovery

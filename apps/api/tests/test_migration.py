@@ -48,6 +48,9 @@ def test_alembic_upgrade_downgrade_cycle():
             "vendor_assignments",
             "state_transitions",
             "incidents",
+            "recovery_options",
+            "approvals",
+            "action_executions",
         }
         assert expected_phase1_tables.issubset(tables), f"Missing tables: {expected_phase1_tables - tables}"
 

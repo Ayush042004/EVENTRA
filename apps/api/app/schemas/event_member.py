@@ -14,6 +14,11 @@ class EventMemberCreate(EventMemberBase):
     user_id: str
 
 
+class EventMemberUpdate(BaseModel):
+    role: Optional[str] = None
+    role_id: Optional[str] = None
+
+
 class EventMemberResponse(EventMemberBase):
     id: str
     event_id: str

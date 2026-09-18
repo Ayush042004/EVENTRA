@@ -26,6 +26,21 @@ from app.schemas.resource import ResourceCreate, ResourceResponse
 from app.schemas.budget import BudgetItemCreate, BudgetItemResponse
 from app.schemas.venue import VenueCreate, VenueResponse
 from app.schemas.vendor import VendorCreate, VendorResponse, VendorAssignmentCreate, VendorAssignmentResponse
+from app.schemas.approval import (
+    ApprovalRequestCreate,
+    ApprovalDecisionRequest,
+    ApprovalRejectionRequest,
+    ApprovalRequestResponse,
+    ApprovalRequestListResponse,
+)
+from app.schemas.action import (
+    ActionRequest,
+    ExecuteRecoveryRequest,
+    AuthorizationDecisionResponse,
+    ActionExecutionResponse,
+    ActionSubmissionResponse,
+)
+from app.schemas.event_member import EventMemberUpdate
 
 __all__ = [
     "UserCreate",
@@ -64,4 +79,15 @@ __all__ = [
     "ObjectiveDefinition",
     "EventSpecification",
     "EventSpecificationPreviewRequest",
+    "ApprovalRequestCreate",
+    "ApprovalDecisionRequest",
+    "ApprovalRejectionRequest",
+    "ApprovalRequestResponse",
+    "ApprovalRequestListResponse",
+    "ActionRequest",
+    "ExecuteRecoveryRequest",
+    "AuthorizationDecisionResponse",
+    "ActionExecutionResponse",
+    "ActionSubmissionResponse",
+    "EventMemberUpdate",
 ]
