@@ -6,7 +6,7 @@ This is a living status document tracking the active engineering state of EVENTR
 ---
 
 ## Overall Status
-**STATUS:** PHASE 10 COMPLETE
+**STATUS:** PHASE 11 COMPLETE
 
 **CURRENT PHASES COMPLETED:**
 - Phase 0: Project Architecture & Environment Foundation
@@ -20,6 +20,7 @@ This is a living status document tracking the active engineering state of EVENTR
 - Phase 8: Deterministic Recovery Engine (Candidate Generation, Simulation, Validation, Scoring, Deltas)
 - Phase 9: Authorization, Collaboration, Approvals & Action Execution Engine
 - Phase 10: Verification Engine, Audit Trail, Activity History & Decision Tracing
+- Phase 11: Event Operations Agent, LangGraph Orchestration & Autonomous Decisioning
 
 ---
 
@@ -61,16 +62,62 @@ This is a living status document tracking the active engineering state of EVENTR
 
 ---
 
+## Phase 11: Event Operations Agent & LangGraph Orchestration
+
+### 1. The Single Agent Architecture (`app/agent/`)
+- **Single Agent (`EventOperationsAgent`)**: Strictly ONE orchestrating agent sitting above the authoritative deterministic backend. No proliferation of uncoordinated sub-agents.
+- **State Schema (`state.py`)**: Minimal typed `AgentState` containing operational metadata, incident references, impact/risk results, recovery options, authorization and approval tickets, execution and verification outcomes.
+- **LangGraph StateGraph (`graph.py`)**: Implements the full operational loop:
+  `START -> OBSERVE -> INTERPRET -> INVESTIGATE -> GENERATE_OPTIONS -> VALIDATE_OPTIONS -> SELECT_OPTION -> AUTHORIZE -> [Approval Gate] -> EXECUTE -> VERIFY -> REEVALUATE -> END`.
+- **LLM Provider Abstraction (`provider.py`)**:
+  - `LLMProvider` abstract base interface.
+  - `RealLLMProvider`: invokes real LLMs (Gemini / OpenAI / LangChain compatible) when credentials exist.
+  - `MockLLMProvider`: deterministic test/offline fallback mock ensuring offline stability and 100% deterministic test execution.
+
+### 2. Backend Tool Integration (`app/agent/tools/operations_tools.py`)
+- **Strict Boundary**: The agent NEVER calculates authoritative operational figures (budgets, schedules, deadlines, slack, feasibility). All authoritative facts are queried from deterministic backend engines:
+  - `observe_event`: queries live state, task health, budget totals, and open incidents.
+  - `get_incidents`: lists active incidents.
+  - `analyze_impact`: delegates to Phase 7 `ImpactAnalyzer` / `IncidentService`.
+  - `calculate_risk`: delegates to Phase 7 `RiskCalculator` / `IncidentService`.
+  - `generate_recovery_options`: delegates to Phase 8 `RecoveryService.generate_recovery_options`.
+  - `validate_recovery_option`: checks Phase 8 feasibility and constraint reports.
+  - `check_action_authorization`: evaluates Phase 9 RBAC, scopes, and impact policy.
+  - `request_action_approval`: creates immutable approval request anchored to state snapshot.
+  - `check_approval_status`: authoritatively checks PostgreSQL approval status.
+  - `execute_action`: executes authorized mutations via Phase 9 `ActionService`.
+  - `verify_action`: validates operational recovery via Phase 10 `VerificationService`.
+  - `get_decision_trace`: extracts factual end-to-end decision traces via Phase 10 `DecisionTraceService`.
+
+### 3. Governance & Safe Approval Resume Flow
+- **Approval Safety Gate**: When an action requires human approval (e.g. collaborator modifying a critical-path task), the agent creates the approval request in Phase 9, sets state to `PENDING_APPROVAL`, and **safely terminates graph execution**. It does NOT execute the action or sleep.
+- **Pre-Approved Invariant**: `pre_approved` client flag cannot bypass Phase 9 authorization policy.
+- **Resume Mechanism**: Upon human sign-off (`status = "APPROVED"` in PostgreSQL), the agent is resumed with `approval_id`. It authoritatively verifies the DB approval record before executing.
+
+### 4. REST API Endpoint (`app/api/routes/agent.py`)
+- `POST /api/agent/events/{event_id}/run`:
+  - Accepts operator natural language message and optional `approval_id`.
+  - Returns structured operational telemetry, selected strategy, approval status, execution, verification, and human-readable operational response.
+
+---
+
 ## Verification Results
-- **Full Test Suite**: PASS (226/226 tests passing).
-  - Phase 10 Unit Tests: 16 passed (`test_verifiers.py`, `test_verification_service.py`, `test_audit_observability.py`).
-  - Phase 10 API Integration Tests: 9 passed (`test_verification_api.py`, `test_observability_api.py`).
-  - Phase 10 Scenario Tests: 5 passed (`test_phase10_verification_scenarios.py` covering canonical recovery transition to NORMAL, "Action Success != Verification Success", partial recovery, reverification upon real-world confirmation, and stale concurrency protection).
-  - Alembic Migration Cycle: PASS (Verified full upgrade/downgrade cycle in `test_migration.py` including `verification_results` and `audit_records`).
-- **Zero Chain-of-Thought / Deterministic Invariants**: STRICTLY ENFORCED.
-- **Zero LLM / No Autonomous Agent**: STRICTLY ENFORCED.
+- **Full Test Suite**: PASS (240/240 tests passing in 7.04s).
+  - Phase 11 Unit Tests: 12 passed (`test_agent_orchestration.py` covering state initialization, observation, impact tool, risk tool, recovery option generation, infeasibility guard, authorization, approval pausing, approval resumption, post-execution verification, approval bypass protection, fake approval protection).
+  - Phase 11 Scenario Tests: 2 passed (`test_phase11_agent_scenarios.py` covering mandatory vendor no-show vertical slice and REST API endpoint integration).
+- **Core Invariants Enforced**:
+  - ZERO LLM authoritative calculation.
+  - ONE unified operations agent.
+  - STRICT separation of duties & approval gates.
+  - Action Success != Verification Success.
+
+---
+
+## Known Limitations
+- Real LLM calls fall back to MockLLMProvider when no GEMINI_API_KEY or OPENAI_API_KEY is configured in the environment.
+- Single active incident prioritized per agent run (multi-incident prioritization is handled in sequence).
 
 ---
 
 ## Next Phase
-**NEXT PHASE = PHASE 11 — EVENT OPERATIONS AGENT / LANGGRAPH / AUTONOMOUS DECISIONING**
+**NEXT PHASE = PHASE 12 — CHANNELS, COLLABORATION & NOTIFICATION SUBSYSTEM**
