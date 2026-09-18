@@ -35,8 +35,9 @@ def _setup_actions_api_env(db: Session):
     db.add(event)
     db.flush()
 
+    mem_org = EventMember(event_id=event.id, user_id=organizer.id, role=RoleType.MAIN_ORGANIZER.value)
     mem = EventMember(event_id=event.id, user_id=collaborator.id, role=RoleType.COLLABORATOR.value)
-    db.add(mem)
+    db.add_all([mem_org, mem])
 
     task = Task(
         event_id=event.id,
@@ -76,7 +77,7 @@ def test_organizer_executes_action_directly(test_client: TestClient, db_session:
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["requires_approval"] is False
+    assert data["decision"]["requires_approval"] is False
     assert data["execution"] is not None
     assert data["execution"]["status"] == "SUCCESS"
 
@@ -102,7 +103,7 @@ def test_collaborator_major_action_routed_to_approval(test_client: TestClient, d
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["requires_approval"] is True
+    assert data["decision"]["requires_approval"] is True
     assert data["approval_request"] is not None
     assert data["approval_request"]["status"] == "PENDING"
     assert data["execution"] is None
@@ -119,6 +120,7 @@ def test_execute_recovery_option_api(test_client: TestClient, db_session: Sessio
     # Setup incident and recovery option
     incident = Incident(
         event_id=event.id,
+        title="Lead technician unavailable",
         incident_type="STAFF_UNAVAILABLE",
         severity="MEDIUM",
         status="INVESTIGATING",
@@ -149,7 +151,7 @@ def test_execute_recovery_option_api(test_client: TestClient, db_session: Sessio
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["status"] == "SUCCESS"
+    assert data["execution"]["status"] == "SUCCESS"
 
     db_session.refresh(rec_opt)
     assert rec_opt.status == "EXECUTED"
@@ -160,6 +162,7 @@ def test_execute_recovery_option_stale_rejection(test_client: TestClient, db_ses
 
     incident = Incident(
         event_id=event.id,
+        title="Technician shortage",
         incident_type="STAFF_UNAVAILABLE",
         severity="MEDIUM",
         status="INVESTIGATING",
@@ -189,5 +192,5 @@ def test_execute_recovery_option_stale_rejection(test_client: TestClient, db_ses
         headers={"x-user-id": organizer.id},
     )
     assert resp.status_code == 409
-    assert "STALE_ACTION" in resp.json()["detail"]
+    assert "STALE_ACTION" in resp.json()["error"]["message"]
 

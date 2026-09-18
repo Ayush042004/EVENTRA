@@ -134,7 +134,7 @@ def test_separation_of_duties_self_approval_rejected(test_client: TestClient, db
         headers={"x-user-id": collaborator.id},
     )
     assert approve_resp.status_code == 403
-    assert "Separation of duties" in approve_resp.json()["detail"]
+    assert "Separation of duties" in approve_resp.json()["error"]["message"]
 
 
 def test_organizer_approves_and_executes_request(test_client: TestClient, db_session: Session):

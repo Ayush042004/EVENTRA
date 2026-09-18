@@ -22,6 +22,11 @@ def _setup_members_env(db: Session):
         state=EventState.NORMAL.value,
     )
     db.add(event)
+    db.flush()
+
+    from app.models.event_member import EventMember
+    mem_org = EventMember(event_id=event.id, user_id=organizer.id, role=RoleType.MAIN_ORGANIZER.value)
+    db.add(mem_org)
     db.commit()
 
     return organizer, collab, viewer, event
@@ -69,7 +74,7 @@ def test_member_lifecycle_and_role_management(test_client: TestClient, db_sessio
         headers={"x-user-id": organizer.id},
     )
     assert del_owner_resp.status_code == 400
-    assert "Cannot remove the MAIN_ORGANIZER" in del_owner_resp.json()["detail"]
+    assert "Cannot remove the primary event owner" in del_owner_resp.json()["error"]["message"]
 
     # 6. Organizer removes collaborator -> 204 No Content
     del_resp = test_client.delete(
