@@ -80,3 +80,9 @@ class Event(Base):
         cascade="all, delete-orphan",
         lazy="select",
     )
+    incidents = relationship(
+        "Incident",
+        back_populates="event",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )

@@ -1,5 +1,5 @@
-"""Test: scenarios/vendor_no_show.py"""
-import pytest
+"""Scenario test: Vendor No Show."""
+from app.models.enums import IncidentType
+from tests.scenarios.test_phase7_scenarios import test_primary_scenario_vendor_no_show_escalation
 
-def test_placeholder():
-    assert True
+test_vendor_no_show = test_primary_scenario_vendor_no_show_escalation

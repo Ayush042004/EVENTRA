@@ -1,5 +1,4 @@
-"""Test: scenarios/vendor_delay.py"""
-import pytest
+"""Scenario test: Vendor Delay."""
+from tests.scenarios.test_phase7_scenarios import test_scenario_vendor_delay_within_and_exceeding_slack
 
-def test_placeholder():
-    assert True
+test_vendor_delay = test_scenario_vendor_delay_within_and_exceeding_slack

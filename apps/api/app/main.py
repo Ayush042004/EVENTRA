@@ -13,6 +13,7 @@ from app.api.routes.planning import router as planning_router
 from app.api.routes.schedule import router as schedule_router
 from app.api.routes.budget import router as budget_router
 from app.api.routes.live import router as live_router
+from app.api.routes.incidents import router as incidents_router
 
 # Initialize application logging
 setup_logging()
@@ -72,3 +73,6 @@ app.include_router(budget_router, prefix=settings.API_V1_STR)
 
 # Mount Phase 6 Live State Routes
 app.include_router(live_router, prefix=settings.API_V1_STR)
+
+# Mount Phase 7 Incident, Impact, and Risk Routes
+app.include_router(incidents_router, prefix=settings.API_V1_STR)
