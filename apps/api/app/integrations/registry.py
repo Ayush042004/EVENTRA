@@ -19,6 +19,7 @@ from app.integrations.communication.mock import MockCommunicationProvider
 from app.integrations.whatsapp.client import WhatsAppAdapter
 from app.integrations.venues.discovery import ExternalVenueAdapter
 from app.integrations.providers.directory import ExternalProviderAdapter
+from app.integrations.google_maps_scraper.adapter import GoogleMapsScraperAdapter
 from app.integrations.llm.base import LLMProvider, get_configured_llm_provider
 
 
@@ -31,6 +32,7 @@ class IntegrationRegistry:
         self._communication_provider: Optional[ProviderCommunicationProvider] = None
         self._venue_provider: Optional[VenueDirectoryProvider] = None
         self._provider_directory: Optional[ProviderDirectoryProvider] = None
+        self._google_maps_scraper: Optional[GoogleMapsScraperAdapter] = None
         self._llm_provider: Optional[LLMProvider] = None
 
     def get_maps_provider(self) -> MapProvider:
@@ -81,6 +83,11 @@ class IntegrationRegistry:
             self._provider_directory = ExternalProviderAdapter()
         return self._provider_directory
 
+    def get_google_maps_scraper(self) -> GoogleMapsScraperAdapter:
+        if not self._google_maps_scraper:
+            self._google_maps_scraper = GoogleMapsScraperAdapter()
+        return self._google_maps_scraper
+
     def get_llm_provider(self) -> LLMProvider:
         if not self._llm_provider:
             self._llm_provider = get_configured_llm_provider()
@@ -91,6 +98,7 @@ class IntegrationRegistry:
         maps_prov = self.get_maps_provider()
         notif_prov = self.get_notification_provider()
         comm_prov = self.get_communication_provider()
+        scraper_prov = self.get_google_maps_scraper()
 
         return {
             "maps": {
@@ -98,6 +106,12 @@ class IntegrationRegistry:
                 "mode": "REAL" if not isinstance(maps_prov, MockMapsProvider) and settings.MAPS_API_KEY else "MOCK",
                 "is_configured": bool(settings.MAPS_API_KEY),
                 "timeout_seconds": settings.MAPS_TIMEOUT_SECONDS,
+            },
+            "google_maps_scraper": {
+                "url": settings.GOOGLE_MAPS_SCRAPER_URL,
+                "is_available": scraper_prov.client.is_available(),
+                "fallback_to_mock": settings.GOOGLE_MAPS_SCRAPER_FALLBACK_TO_MOCK,
+                "timeout_seconds": settings.GOOGLE_MAPS_SCRAPER_TIMEOUT,
             },
             "notifications": {
                 "provider": settings.NOTIFICATION_PROVIDER,

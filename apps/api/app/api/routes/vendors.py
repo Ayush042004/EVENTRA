@@ -16,10 +16,33 @@ from app.schemas.vendor import (
     VendorAssignmentResponse,
     CategoryValidationResult,
     PaginatedVendorsResponse,
+    ProviderDiscoveryRequest,
+    ProviderDiscoveryResponse,
 )
 from app.core.exceptions import AppException
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
+
+
+@router.post("/discover", response_model=ProviderDiscoveryResponse, status_code=status.HTTP_200_OK)
+def discover_providers(
+    discovery_in: ProviderDiscoveryRequest,
+    db: Session = Depends(get_db_session),
+):
+    """Discovers providers from Google Maps, normalizes, classifies into EVENTRA taxonomy,
+
+    deduplicates, and stores them in the Provider Network.
+    """
+    service = VendorService(db)
+    vendors, created, updated, source, queries = service.discover_providers(discovery_in)
+    return ProviderDiscoveryResponse(
+        total_discovered=len(vendors),
+        total_created=created,
+        total_updated=updated,
+        source=source,
+        query_used=queries,
+        items=[VendorResponse.model_validate(v) for v in vendors],
+    )
 
 
 @router.get("", response_model=PaginatedVendorsResponse)
