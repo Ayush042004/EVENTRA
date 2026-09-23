@@ -266,11 +266,21 @@ class GeospatialDiscoveryService:
                 osm_id_val = props.get("osm_id") or abs(hash(f"{clean_name}_{city}")) % 10000000
                 raw_cat_detected = osm_val or props.get("type") or osm_key or "commercial"
 
+                from app.services.provider_classifier import ProviderClassifier
+                classification = ProviderClassifier.classify(
+                    name=clean_name,
+                    raw_category=raw_cat_detected,
+                    description=props.get("description"),
+                )
+                # STRICT EVIDENCE-BASED RULE: If requested category is specific, discard non-matching places
+                if cat_clean != "OTHER" and classification.category != cat_clean:
+                    continue
+
                 provider_dict = {
                     "source": "LIVE_OPENSTREETMAP_NETWORK",
                     "source_id": f"osm_live_{osm_id_val}",
                     "name": clean_name,
-                    "category": "OTHER",
+                    "category": classification.category,
                     "raw_category": raw_cat_detected,
                     "address": addr,
                     "city": city,

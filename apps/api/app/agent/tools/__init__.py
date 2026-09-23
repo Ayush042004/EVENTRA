@@ -29,4 +29,19 @@ __all__ = [
     "execute_action",
     "verify_action",
     "get_decision_trace",
+    "contact_provider",
+    "negotiate_with_provider",
+    "request_provider_approval",
+    "confirm_provider_engagement",
+    "simulate_provider_response",
+    "get_provider_negotiation_history",
 ]
+
+from app.agent.tools.communication_tools import (
+    contact_provider,
+    negotiate_with_provider,
+    request_provider_approval,
+    confirm_provider_engagement,
+    simulate_provider_response,
+    get_provider_negotiation_history,
+)

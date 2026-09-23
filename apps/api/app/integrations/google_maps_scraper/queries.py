@@ -161,25 +161,13 @@ def parse_discovery_query(text: str) -> dict:
     clean = re.sub(r"\b(?:find|search(?:\s+for)?|looking\s+for|show(?:\s+me)?|get)\b", "", clean)
     clean = " ".join(clean.split()).strip()
 
-    # 5. Standalone Location & Prefix Resolution (e.g. "Delhi" or "Delhi photographers")
-    if not anchor_mode:
-        if not category:
-            # Entire text is a location/city query with no category keywords (e.g. "Delhi", "Seattle, WA", "Mumbai")
-            candidate = raw.strip()
-            if candidate and len(candidate) >= 2:
-                anchor_mode = "REGION"
-                location = candidate
-        else:
-            # Category was identified, but see if a city prefix or suffix was left in the clean query (e.g. "Delhi photographers")
-            # Strip the category keywords from clean to see what remains
-            candidate_loc = clean
-            for _, pat in cat_patterns:
-                candidate_loc = re.sub(pat, "", candidate_loc).strip()
-            candidate_loc = " ".join(candidate_loc.split()).strip()
-            # If what's left is a substantial name and not a generic modifier
-            if candidate_loc and len(candidate_loc) >= 3 and not re.search(r"\b(?:best|top|good|cheap|affordable|pro|local|companies|company|services|service)\b", candidate_loc):
-                anchor_mode = "REGION"
-                location = candidate_loc.title()
+    # 5. Standalone Location Resolution (e.g. "Delhi" or "Mumbai, India")
+    if not anchor_mode and not category:
+        # Entire text is a location/city query with no category keywords (e.g. "Delhi", "Seattle, WA", "Mumbai")
+        candidate = raw.strip()
+        if candidate and len(candidate) >= 2:
+            anchor_mode = "REGION"
+            location = candidate
 
     return {
         "category": category,

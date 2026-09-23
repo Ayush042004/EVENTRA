@@ -6,7 +6,6 @@ Isolates third-party channels (mock, WhatsApp, SMS) from core business logic.
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
-from app.integrations.registry import registry
 from app.integrations.base import IntegrationResult
 from app.observability.audit import AuditRecorder
 
@@ -16,6 +15,7 @@ class ProviderCommunicationService:
 
     def __init__(self, db: Optional[Session] = None):
         self.db = db
+        from app.integrations.registry import registry
         self._provider = registry.get_communication_provider()
         self._audit = AuditRecorder(db) if db else None
 
@@ -79,7 +79,7 @@ class ProviderCommunicationService:
                 actor_type="EXTERNAL",
                 action="PROVIDER_MESSAGE_RECEIVED",
                 action_type="COMMUNICATION",
-                details={
+                after_state={
                     "channel": result.data.get("channel"),
                     "provider_id": result.data.get("provider_id"),
                 },

@@ -1,5 +1,5 @@
 """Pydantic Schemas: Vendor (Provider), Availability, Assignment, and Category Validation"""
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -65,11 +65,11 @@ class VendorResponse(VendorBase):
 class ProviderDiscoveryRequest(BaseModel):
     """Payload to discover providers from Google Maps."""
     category: Optional[str] = Field(None, description="EVENTRA category (e.g. CATERING, DECOR, DJ_MUSIC)")
-    query: Optional[str] = Field(None, description="Custom search keywords or natural query (e.g. 'wedding caterers within 10km')")
-    location: Optional[str] = Field(None, description="City or specific location string (e.g. 'Seattle')")
+    query: Optional[str] = Field(None, description="Custom search keywords or natural query")
+    location: Optional[str] = Field(None, description="City or specific location string")
     latitude: Optional[float] = Field(None, description="Optional geocoded latitude")
     longitude: Optional[float] = Field(None, description="Optional geocoded longitude")
-    radius_km: Optional[float] = Field(None, description="Search radius in kilometers for deterministic proximity filtering")
+    radius_km: Optional[float] = Field(None, description="Search radius in kilometers")
     anchor_mode: Optional[str] = Field(None, description="Location anchor mode: 'NEAR_EVENT', 'NEAR_ME', 'REGION'")
     limit: int = Field(default=25, ge=1, le=100, description="Max providers to discover")
     use_real_scraper: bool = Field(default=True, description="Attempt real scraping if scraper service alive")
@@ -133,7 +133,9 @@ class VendorAssignmentBase(BaseModel):
 
 
 class VendorAssignmentCreate(VendorAssignmentBase):
-    pass
+    target_amount: Optional[float] = Field(None, ge=0.0, description="Budget target agent negotiates toward")
+    max_approved_amount: Optional[float] = Field(None, ge=0.0, description="Hard ceiling agent cannot exceed")
+    currency: Optional[str] = Field(default="INR", max_length=10)
 
 
 class VendorAssignmentUpdate(BaseModel):
@@ -141,12 +143,30 @@ class VendorAssignmentUpdate(BaseModel):
     status: Optional[str] = Field(None, max_length=50)
     agreed_cost: Optional[float] = Field(None, ge=0.0)
     notes: Optional[str] = None
+    target_amount: Optional[float] = Field(None, ge=0.0)
+    max_approved_amount: Optional[float] = Field(None, ge=0.0)
 
 
 class VendorAssignmentResponse(VendorAssignmentBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    # Negotiation fields
+    negotiation_status: Optional[str] = None
+    target_amount: Optional[float] = None
+    max_approved_amount: Optional[float] = None
+    quoted_amount: Optional[float] = None
+    currency: Optional[str] = None
+    provider_available: Optional[bool] = None
+    coverage_start: Optional[str] = None
+    coverage_end: Optional[str] = None
+    advance_required: Optional[bool] = None
+    provider_response_summary: Optional[Dict[str, Any]] = None
+    negotiation_round: Optional[str] = None
+    approval_id: Optional[str] = None
+    is_simulation: Optional[bool] = None
+    # Vendor details (populated for UI)
+    vendor: Optional[VendorResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -163,3 +183,33 @@ class PaginatedVendorsResponse(BaseModel):
     items: List[VendorResponse]
     limit: int
     offset: int
+
+
+# --- Negotiation Schemas ---
+
+class ProviderEngagementRequest(BaseModel):
+    """Initiates provider engagement / contact for an assignment."""
+    target_amount: Optional[float] = Field(None, ge=0.0, description="Budget target for negotiation")
+    max_approved_amount: Optional[float] = Field(None, ge=0.0, description="Hard ceiling amount")
+    currency: str = Field(default="INR")
+    required_coverage_start: Optional[str] = Field(None, description="Required coverage start time e.g. '10:00'")
+    required_coverage_end: Optional[str] = Field(None, description="Required coverage end time e.g. '20:00'")
+
+
+class SimulateProviderRequest(BaseModel):
+    """Demo simulation request — simulates provider response."""
+    scenario: str = Field(..., description="ACCEPT, COUNTER, DECLINE, NO_RESPONSE")
+    quoted_amount: Optional[float] = Field(None, description="Provider's quoted amount for ACCEPT/COUNTER scenarios")
+    counter_coverage_start: Optional[str] = Field(None, description="Provider's counter-offered coverage start")
+    counter_coverage_end: Optional[str] = Field(None, description="Provider's counter-offered coverage end")
+    advance_required: Optional[bool] = Field(None, description="Provider requires advance payment")
+    provider_count: Optional[int] = Field(None, description="Number of providers offered")
+    message: Optional[str] = Field(None, description="Custom provider response message")
+
+
+class NegotiationConversationResponse(BaseModel):
+    """Full negotiation state and conversation thread."""
+    assignment: VendorAssignmentResponse
+    messages: List[Dict[str, Any]] = Field(default_factory=list)
+    budget_validation: Optional[Dict[str, Any]] = None
+    requirement_validation: Optional[Dict[str, Any]] = None

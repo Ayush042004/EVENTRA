@@ -91,6 +91,7 @@ export interface ProviderDiscoveryResponse {
   query_used: string[];
   anchor_coordinates?: [number, number] | null;
   anchor_label?: string | null;
+  anchor_mode?: "NEAR_EVENT" | "NEAR_ME" | "REGION" | string | null;
   items: VendorResponse[];
 }
 

@@ -239,6 +239,13 @@ export default function PhysicalNetworkDiscoveryPage() {
         if (res.anchor_label) {
           setAnchorLabel(res.anchor_label);
         }
+        if (res.anchor_mode) {
+          const mode = res.anchor_mode as "NEAR_EVENT" | "NEAR_ME" | "REGION";
+          setAnchorMode(mode);
+          if (mode === "REGION" && res.anchor_label) {
+            setSelectedCity(res.anchor_label);
+          }
+        }
 
         const providerEntities = (res.items || []).map(mapVendorToEntity);
         setPlaces(providerEntities);
@@ -678,9 +685,9 @@ export default function PhysicalNetworkDiscoveryPage() {
                           </div>
                         ) : (
                           <div>
-                            <span className="text-slate-500 text-[10px] block">ESTIMATED RATE</span>
-                            <span className="font-bold text-emerald-400">
-                              {place.hourly_rate ? `$${Math.round(place.hourly_rate)}/hr` : "Custom Quote"}
+                            <span className="text-slate-500 text-[10px] block">RATE</span>
+                            <span className={place.hourly_rate ? "font-bold text-emerald-400" : "text-slate-400 text-xs italic"}>
+                              {place.hourly_rate ? `$${Math.round(place.hourly_rate)}/hr` : "Rate unavailable"}
                             </span>
                           </div>
                         )}

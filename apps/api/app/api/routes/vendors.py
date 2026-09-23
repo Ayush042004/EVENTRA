@@ -18,6 +18,8 @@ from app.schemas.vendor import (
     PaginatedVendorsResponse,
     ProviderDiscoveryRequest,
     ProviderDiscoveryResponse,
+    ProviderEngagementRequest,
+    SimulateProviderRequest,
 )
 from app.core.exceptions import AppException
 
@@ -186,3 +188,134 @@ def check_provider_availability(
         if "not found" in err_msg:
             raise AppException(message=err_msg, status_code=status.HTTP_404_NOT_FOUND, code="PROVIDER_NOT_FOUND")
         raise AppException(message=err_msg, status_code=status.HTTP_400_BAD_REQUEST, code="INVALID_TIMEFRAME")
+
+
+# ==========================================================
+# PROVIDER NEGOTIATION & ENGAGEMENT ROUTES
+# ==========================================================
+
+@router.post("/assignments/{assignment_id}/engage", status_code=status.HTTP_200_OK)
+def initiate_provider_engagement(
+    assignment_id: str,
+    payload: ProviderEngagementRequest,
+    db: Session = Depends(get_db_session),
+):
+    """Initiates provider contact for an assignment. Generates engagement message and sends it."""
+    from app.services.negotiation_service import NegotiationService
+    neg = NegotiationService(db)
+    assignment = neg._get_assignment(assignment_id)
+    try:
+        result = neg.initiate_engagement(
+            event_id=assignment.event_id,
+            assignment_id=assignment_id,
+            target_amount=payload.target_amount,
+            max_approved_amount=payload.max_approved_amount,
+            currency=payload.currency,
+            required_coverage_start=payload.required_coverage_start,
+            required_coverage_end=payload.required_coverage_end,
+        )
+        return result
+    except Exception as exc:
+        raise AppException(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST, code="ENGAGEMENT_FAILED")
+
+
+@router.post("/assignments/{assignment_id}/simulate", status_code=status.HTTP_200_OK)
+def simulate_provider_response(
+    assignment_id: str,
+    payload: SimulateProviderRequest,
+    db: Session = Depends(get_db_session),
+):
+    """DEMO SIMULATION — Simulates a provider response scenario.
+
+    Scenarios: ACCEPT, COUNTER, DECLINE, NO_RESPONSE.
+    Simulated communication is clearly labeled and goes through the real EVENTRA state pipeline.
+    """
+    from app.services.negotiation_service import NegotiationService
+    neg = NegotiationService(db)
+    try:
+        result = neg.simulate_response(
+            assignment_id=assignment_id,
+            scenario=payload.scenario,
+            quoted_amount=payload.quoted_amount,
+            coverage_start=payload.counter_coverage_start,
+            coverage_end=payload.counter_coverage_end,
+            advance_required=payload.advance_required,
+            provider_count=payload.provider_count,
+            custom_message=payload.message,
+        )
+        return result
+    except Exception as exc:
+        raise AppException(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST, code="SIMULATION_FAILED")
+
+
+@router.post("/assignments/{assignment_id}/negotiate", status_code=status.HTTP_200_OK)
+def negotiate_with_provider(
+    assignment_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """Sends a counter-offer to the provider. Agent negotiates toward target, never exceeds ceiling."""
+    from app.services.negotiation_service import NegotiationService
+    neg = NegotiationService(db)
+    try:
+        result = neg.negotiate(assignment_id=assignment_id)
+        return result
+    except Exception as exc:
+        raise AppException(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST, code="NEGOTIATION_FAILED")
+
+
+@router.post("/assignments/{assignment_id}/request-approval", status_code=status.HTTP_200_OK)
+def request_engagement_approval(
+    assignment_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """Creates an approval request for a provider engagement. Human approval is ALWAYS required."""
+    from app.services.negotiation_service import NegotiationService
+    neg = NegotiationService(db)
+    assignment = neg._get_assignment(assignment_id)
+    try:
+        result = neg.request_approval(
+            event_id=assignment.event_id,
+            assignment_id=assignment_id,
+        )
+        return result
+    except Exception as exc:
+        raise AppException(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST, code="APPROVAL_REQUEST_FAILED")
+
+
+@router.post("/assignments/{assignment_id}/confirm", status_code=status.HTTP_200_OK)
+def confirm_provider_engagement(
+    assignment_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """Confirms provider engagement AFTER human approval. Updates assignment to CONFIRMED."""
+    from app.services.negotiation_service import NegotiationService
+    neg = NegotiationService(db)
+    try:
+        result = neg.confirm_engagement(assignment_id=assignment_id)
+        return result
+    except Exception as exc:
+        raise AppException(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST, code="CONFIRMATION_FAILED")
+
+
+@router.get("/assignments/{assignment_id}/conversation")
+def get_negotiation_conversation(
+    assignment_id: str,
+    db: Session = Depends(get_db_session),
+):
+    """Retrieves the full negotiation conversation thread and state for an assignment."""
+    from app.services.negotiation_service import NegotiationService
+    neg = NegotiationService(db)
+    try:
+        data = neg.get_conversation(assignment_id=assignment_id)
+        assignment = data["assignment"]
+        vendor = data.get("vendor")
+        return {
+            "assignment": VendorAssignmentResponse.model_validate(assignment),
+            "vendor": VendorResponse.model_validate(vendor) if vendor else None,
+            "messages": data["messages"],
+            "budget_validation": data.get("budget_validation"),
+            "requirement_validation": data.get("requirement_validation"),
+        }
+    except Exception as exc:
+        raise AppException(message=str(exc), status_code=status.HTTP_404_NOT_FOUND, code="CONVERSATION_NOT_FOUND")
+

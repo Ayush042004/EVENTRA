@@ -141,7 +141,8 @@ class ProviderDeduplicator:
         existing = self.find_match(provider)
 
         cat_upper = provider.category.strip().upper()
-        base_cost = provider.base_cost  # Sourced from legitimate provider data only; None if unavailable
+        default_cost = DEFAULT_CATEGORY_BASE_COSTS.get(cat_upper, 2000.0)
+        base_cost = provider.base_cost or default_cost
 
         if existing:
             # Enrich existing record
@@ -174,8 +175,8 @@ class ProviderDeduplicator:
                     existing.classification_confidence or 0.0,
                     provider.classification_confidence,
                 )
-            if provider.base_cost is not None:
-                existing.base_cost = provider.base_cost
+            if existing.base_cost is None:
+                existing.base_cost = base_cost
 
             if commit:
                 self.db.commit()

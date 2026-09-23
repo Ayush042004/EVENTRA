@@ -1,7 +1,7 @@
 """SQLAlchemy Model: VendorAssignment"""
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Float, DateTime, Text, ForeignKey
+from sqlalchemy import Column, String, Float, DateTime, Text, ForeignKey, Boolean, JSON
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 
@@ -23,5 +23,21 @@ class VendorAssignment(Base):
     created_at = Column(DateTime, default=utc_now, nullable=False)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
+    # --- Negotiation lifecycle ---
+    negotiation_status = Column(String(50), default="DISCOVERED", nullable=False, index=True)
+    target_amount = Column(Float, nullable=True)  # What the agent negotiates TOWARD
+    max_approved_amount = Column(Float, nullable=True)  # Hard ceiling agent cannot exceed
+    quoted_amount = Column(Float, nullable=True)  # Latest provider quotation
+    currency = Column(String(10), default="INR", nullable=True)
+    provider_available = Column(Boolean, nullable=True)
+    coverage_start = Column(String(20), nullable=True)  # e.g. "10:00"
+    coverage_end = Column(String(20), nullable=True)  # e.g. "20:00"
+    advance_required = Column(Boolean, nullable=True)
+    provider_response_summary = Column(JSON, nullable=True)  # Structured parsed offer
+    negotiation_round = Column(String(10), default="0", nullable=True)  # Counter for negotiation rounds
+    approval_id = Column(String(36), nullable=True, index=True)  # Links to Approval request
+    is_simulation = Column(Boolean, default=False, nullable=False)  # True for demo simulation
+
     vendor = relationship("Vendor", back_populates="assignments")
     event = relationship("Event", back_populates="vendor_assignments")
+

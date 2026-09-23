@@ -309,11 +309,25 @@ export interface VendorAssignmentResponse {
   status: string;
   agreed_cost?: number | null;
   notes?: string | null;
-  assigned_at: string;
-  created_at: string;
-  updated_at: string;
+  assigned_at?: string;
+  created_at?: string;
+  updated_at?: string;
   vendor?: VendorResponse | null;
+  // Negotiation extensions
+  negotiation_status?: string;
+  negotiation_round?: string;
+  target_amount?: number | null;
+  max_approved_amount?: number | null;
+  quoted_amount?: number | null;
+  currency?: string;
+  coverage_start?: string | null;
+  coverage_end?: string | null;
+  provider_count?: number;
+  advance_required?: boolean | null;
+  approval_id?: string | null;
+  is_simulation?: boolean;
 }
+
 
 export interface ProviderAvailabilityResult {
   vendor_id: string;

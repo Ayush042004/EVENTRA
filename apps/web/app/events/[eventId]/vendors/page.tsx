@@ -29,7 +29,10 @@ import {
   X,
   Sparkles,
   Radio,
+  ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
+import { ProviderNegotiationModal } from "@/features/provider-communication";
 
 export default function EventVendorsPage() {
   const params = useParams();
@@ -44,11 +47,15 @@ export default function EventVendorsPage() {
   const [loading, setLoading] = useState(true);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
+  // Negotiation Modal State
+  const [selectedAssignmentForNegotiation, setSelectedAssignmentForNegotiation] = useState<any | null>(null);
+
   // Messaging Modal State
   const [activeMessagingVendor, setActiveMessagingVendor] = useState<{ id: string; name: string; category?: string; city?: string } | null>(null);
   const [messages, setMessages] = useState<ProviderMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
+
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -76,7 +83,7 @@ export default function EventVendorsPage() {
 
   const handleAssignProvider = async (provider: any) => {
     try {
-      await createAssignment({
+      const res = await createAssignment({
         event_id: eventId,
         vendor_id: provider.id,
         category: (provider.category || "other").toLowerCase(),
@@ -85,9 +92,13 @@ export default function EventVendorsPage() {
       });
 
       setAssignedVendorIds((prev) => [...prev, provider.id]);
-      setSuccessBanner(`Successfully assigned "${provider.name}" to the event.`);
+      setSuccessBanner(`Assigned "${provider.name}". Launching autonomous negotiation agent...`);
       setTimeout(() => setSuccessBanner(null), 5000);
       await loadData();
+      setSelectedAssignmentForNegotiation({
+        ...res,
+        vendor: provider,
+      });
     } catch (err: any) {
       alert(err.message || "Failed to assign provider.");
     }
@@ -230,46 +241,137 @@ export default function EventVendorsPage() {
 
               {assignments.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
-                  {assignments.map((a) => (
-                    <div
-                      key={a.id}
-                      className="p-4 rounded-xl border border-slate-800 bg-[#090d16] flex flex-col justify-between space-y-3"
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-blue-950/80 text-blue-400 border border-blue-800/60">
-                            {a.category}
-                          </span>
-                          <span className="text-[10px] font-mono text-emerald-400">
-                            {a.status}
-                          </span>
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-100">
-                          {a.vendor?.name || `Vendor #${a.vendor_id}`}
-                        </h4>
-                        <div className="text-xs font-mono text-slate-400 flex items-center justify-between pt-2 border-t border-slate-800/80">
-                          <span>AGREED COST:</span>
-                          <span className="font-bold text-emerald-400">${a.agreed_cost || 0}</span>
-                        </div>
-                      </div>
+                  {assignments.map((a) => {
+                    const negStatus = (a.negotiation_status || "NOT_CONTACTED").toUpperCase();
+                    const currency = a.currency || "INR";
+                    const isAwaitingApproval = negStatus === "AWAITING_APPROVAL";
+                    const isConfirmed = negStatus === "CONFIRMED";
+                    const isNegotiating = negStatus === "NEGOTIATING";
 
-                      <div className="flex items-center space-x-2 pt-2 border-t border-slate-800/60">
-                        <button
-                          onClick={() =>
-                            openMessaging({
-                              id: a.vendor_id,
-                              name: a.vendor?.name || a.vendor_id,
-                              category: a.category,
-                            })
-                          }
-                          className="w-full py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/40 text-xs font-semibold flex items-center justify-center space-x-1.5 transition"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span>Dispatch Operational Alert</span>
-                        </button>
+                    return (
+                      <div
+                        key={a.id}
+                        className={`p-4 rounded-xl border bg-[#090d16] flex flex-col justify-between space-y-3 transition shadow-lg ${
+                          isAwaitingApproval
+                            ? "border-purple-600/80 shadow-purple-950/30"
+                            : isConfirmed
+                            ? "border-emerald-700/60 shadow-emerald-950/20"
+                            : isNegotiating
+                            ? "border-amber-600/60 shadow-amber-950/20"
+                            : "border-slate-800"
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-blue-950/80 text-blue-400 border border-blue-800/60">
+                              {a.category}
+                            </span>
+                            {/* Negotiation status badge */}
+                            {isAwaitingApproval && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 animate-pulse font-semibold">
+                                APPROVAL REQUIRED
+                              </span>
+                            )}
+                            {isConfirmed && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-semibold">
+                                CONFIRMED
+                              </span>
+                            )}
+                            {isNegotiating && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800 font-semibold">
+                                AI NEGOTIATING
+                              </span>
+                            )}
+                            {negStatus === "CONTACTED" && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800 font-semibold">
+                                CONTACTED
+                              </span>
+                            )}
+                            {negStatus === "NOT_CONTACTED" && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                                NOT CONTACTED
+                              </span>
+                            )}
+                            {negStatus === "DECLINED" && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">
+                                DECLINED
+                              </span>
+                            )}
+                          </div>
+
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-100">
+                              {a.vendor?.name || `Vendor #${a.vendor_id}`}
+                            </h4>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {a.vendor?.contact_phone || "Contact ready for agent dispatch"}
+                            </p>
+                          </div>
+
+                          {/* Commercial details */}
+                          <div className="p-2.5 rounded-lg bg-[#070b12] border border-slate-800/80 text-xs space-y-1">
+                            <div className="flex items-center justify-between text-slate-400 font-mono text-[11px]">
+                              <span>AGREED COST:</span>
+                              <span className="font-bold text-emerald-400">
+                                {currency} {Number(a.agreed_cost || a.quoted_amount || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            {a.target_amount && (
+                              <div className="flex items-center justify-between text-slate-400 font-mono text-[10px]">
+                                <span>TARGET / CEILING:</span>
+                                <span>
+                                  {currency} {Number(a.target_amount).toLocaleString()} / {currency} {Number(a.max_approved_amount || 0).toLocaleString()}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex flex-col gap-2 pt-2 border-t border-slate-800/60">
+                          <button
+                            onClick={() => setSelectedAssignmentForNegotiation(a)}
+                            className={`w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center space-x-1.5 transition shadow-sm ${
+                              isAwaitingApproval
+                                ? "bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/40"
+                                : isConfirmed
+                                ? "bg-emerald-600/30 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40"
+                                : isNegotiating
+                                ? "bg-amber-600 hover:bg-amber-500 text-slate-950"
+                                : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white"
+                            }`}
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>
+                              {isAwaitingApproval
+                                ? "Review Human Approval"
+                                : isConfirmed
+                                ? "View Confirmed Agreement"
+                                : isNegotiating
+                                ? "AI Negotiation Cockpit"
+                                : negStatus === "CONTACTED"
+                                ? "View Conversation Thread"
+                                : "Engage & Negotiate"}
+                            </span>
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              openMessaging({
+                                id: a.vendor_id,
+                                name: a.vendor?.name || a.vendor_id,
+                                category: a.category,
+                              })
+                            }
+                            className="w-full py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-[11px] font-medium flex items-center justify-center space-x-1.5 transition border border-slate-800"
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            <span>Quick Operational Dispatch</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="py-12 text-center text-xs text-slate-500 font-mono">
@@ -356,7 +458,16 @@ export default function EventVendorsPage() {
             </div>
           </div>
         )}
+
+        {/* Provider Negotiation & Communication Cockpit Modal */}
+        <ProviderNegotiationModal
+          isOpen={!!selectedAssignmentForNegotiation}
+          onClose={() => setSelectedAssignmentForNegotiation(null)}
+          assignment={selectedAssignmentForNegotiation}
+          onUpdate={loadData}
+        />
       </div>
     </div>
   );
 }
+

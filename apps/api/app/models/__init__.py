@@ -14,6 +14,7 @@ from app.models.enums import (
     PermissionCategory,
     BudgetItemStatus,
     ResourceStatus,
+    NegotiationStatus,
 )
 from app.models.venue import Venue
 from app.models.venue_availability import VenueAvailability

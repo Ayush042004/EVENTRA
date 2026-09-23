@@ -17,6 +17,9 @@ import {
   PowerOff,
   UserX,
   X,
+  Users,
+  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 import {
   getLiveState,
@@ -25,10 +28,12 @@ import {
   updateTaskStatus,
 } from "../../../../lib/api/live";
 import { createIncident } from "../../../../lib/api/incidents";
+import { getAssignmentsForEvent } from "../../../../lib/api/vendors";
 import type {
   EventLiveState,
   TaskProgress,
   TaskStatus,
+  VendorAssignmentResponse,
 } from "../../../../types/api";
 
 export default function LiveCommandPage() {
@@ -37,10 +42,12 @@ export default function LiveCommandPage() {
   const eventId = params.eventId as string;
 
   const [liveState, setLiveState] = useState<EventLiveState | null>(null);
+  const [providerAssignments, setProviderAssignments] = useState<VendorAssignmentResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [transitioning, setTransitioning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+
 
   // Status update modal state
   const [selectedTask, setSelectedTask] = useState<TaskProgress | null>(null);
@@ -52,8 +59,12 @@ export default function LiveCommandPage() {
 
   const fetchLiveState = useCallback(async () => {
     try {
-      const data = await getLiveState(eventId);
+      const [data, assignmentsData] = await Promise.all([
+        getLiveState(eventId),
+        getAssignmentsForEvent(eventId).catch(() => []),
+      ]);
       setLiveState(data);
+      setProviderAssignments(assignmentsData || []);
       setError(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to load live state";
@@ -389,6 +400,92 @@ export default function LiveCommandPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Contracted Provider Readiness & Negotiation Telemetry */}
+      {providerAssignments.length > 0 && (
+        <div className="rounded-xl border border-border/50 bg-card/30 backdrop-blur-sm p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-cyan-400" />
+              <h2 className="text-sm font-semibold text-foreground">
+                Provider Network & Negotiation Readiness
+              </h2>
+            </div>
+            <button
+              onClick={() => router.push(`/events/${eventId}/vendors`)}
+              className="text-xs text-primary hover:underline flex items-center gap-1 font-mono"
+            >
+              <span>Manage All ({providerAssignments.length})</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {providerAssignments.map((pa) => {
+              const negStatus = (pa.negotiation_status || "NOT_CONTACTED").toUpperCase();
+              const isAwaiting = negStatus === "AWAITING_APPROVAL";
+              const isConfirmed = negStatus === "CONFIRMED";
+              const isNeg = negStatus === "NEGOTIATING";
+
+              return (
+                <div
+                  key={pa.id}
+                  onClick={() => router.push(`/events/${eventId}/vendors`)}
+                  className={`p-3 rounded-xl border bg-background/80 cursor-pointer hover:border-primary/50 transition flex flex-col justify-between space-y-2 ${
+                    isAwaiting
+                      ? "border-purple-600/60 shadow-[0_0_12px_rgba(168,85,247,0.15)]"
+                      : isConfirmed
+                      ? "border-emerald-600/40"
+                      : isNeg
+                      ? "border-amber-600/40"
+                      : "border-border/60"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-secondary text-muted-foreground">
+                      {pa.category}
+                    </span>
+                    {isAwaiting && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold animate-pulse">
+                        APPROVAL REQUIRED
+                      </span>
+                    )}
+                    {isConfirmed && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold">
+                        CONFIRMED & READY
+                      </span>
+                    )}
+                    {isNeg && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                        AI NEGOTIATING
+                      </span>
+                    )}
+                    {negStatus === "CONTACTED" && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                        CONTACTED
+                      </span>
+                    )}
+                    {negStatus === "NOT_CONTACTED" && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground text-[9px]">
+                        NOT CONTACTED
+                      </span>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-bold text-foreground">
+                      {pa.vendor?.name || `Provider #${pa.vendor_id}`}
+                    </h4>
+                    <p className="text-[10px] font-mono text-muted-foreground mt-0.5">
+                      Cost: {pa.currency || "INR"} {Number(pa.agreed_cost || pa.quoted_amount || 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

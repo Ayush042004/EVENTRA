@@ -62,8 +62,44 @@ export interface VendorAssignment {
   id: string;
   eventId: string;
   vendorId: string;
-  taskId: string;
+  taskId?: string;
+  category?: string;
   status: VendorAssignmentStatus;
-  agreedFee: number;
+  agreedFee?: number;
+  agreed_cost?: number;
   notes?: string;
+  negotiation_status?: string;
+  target_amount?: number;
+  max_approved_amount?: number;
+  quoted_amount?: number;
+  currency?: string;
+  coverage_start?: string;
+  coverage_end?: string;
+  provider_count?: number;
+  advance_required?: boolean;
+  approval_id?: string;
+  is_simulation?: boolean;
 }
+
+export interface VendorAssignmentResponse {
+  id: string;
+  event_id: string;
+  vendor_id: string;
+  category: string;
+  status: string;
+  negotiation_status: string;
+  agreed_cost?: number;
+  target_amount?: number;
+  max_approved_amount?: number;
+  quoted_amount?: number;
+  currency: string;
+  coverage_start?: string;
+  coverage_end?: string;
+  provider_count: number;
+  advance_required?: boolean;
+  approval_id?: string;
+  is_simulation: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+

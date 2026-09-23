@@ -158,3 +158,73 @@ def test_location_aware_provider_discovery_api(test_client: TestClient, db_sessi
     # Items should be sorted by distance ascending
     distances = [it["distance_km"] for it in data["items"] if it.get("distance_km") is not None]
     assert distances == sorted(distances)
+
+
+def test_user_cases_query_parsing():
+    """Validates the exact 6 user test cases."""
+    # CASE 1: photographers near venue
+    c1 = parse_discovery_query("photographers near venue")
+    assert c1["category"] == "PHOTOGRAPHY"
+    assert c1["anchor_mode"] == "NEAR_EVENT"
+
+    # CASE 2: caterers within 10km
+    c2 = parse_discovery_query("caterers within 10km")
+    assert c2["category"] == "CATERING"
+    assert c2["radius_km"] == 10.0
+
+    # CASE 3: AV companies near event
+    c3 = parse_discovery_query("AV companies near event")
+    assert c3["category"] == "AV_TECH"
+    assert c3["anchor_mode"] == "NEAR_EVENT"
+
+    # CASE 4: photographers in Delhi
+    c4 = parse_discovery_query("photographers in Delhi")
+    assert c4["category"] == "PHOTOGRAPHY"
+    assert c4["anchor_mode"] == "REGION"
+    assert c4["location"].lower() == "delhi"
+
+    # CASE 5: photographers near me
+    c5 = parse_discovery_query("photographers near me")
+    assert c5["category"] == "PHOTOGRAPHY"
+    assert c5["anchor_mode"] == "NEAR_ME"
+
+    # CASE 6: Delhi (standalone city query)
+    c6 = parse_discovery_query("Delhi")
+    assert c6["anchor_mode"] == "REGION"
+    assert c6["location"].lower() == "delhi"
+
+
+def test_strict_evidence_based_classification():
+    """Verifies that non-event businesses (plumbers, labs, streets) are never forced into PHOTOGRAPHY."""
+    from app.services.provider_classifier import ProviderClassifier
+    from app.integrations.google_maps_scraper.models import NormalizedProvider
+    from app.services.deduplication import ProviderDeduplicator
+
+    # Plumber must classify as OTHER, not PHOTOGRAPHY
+    res_plumber = ProviderClassifier.classify("Seattle Plumbing Pros", raw_category="plumber")
+    assert res_plumber.category == "OTHER"
+
+    # Laboratory must classify as OTHER, not PHOTOGRAPHY
+    res_lab = ProviderClassifier.classify("ARCpoint Labs of Seattle West", raw_category="laboratory")
+    assert res_lab.category == "OTHER"
+
+    # Street/Highway must classify as OTHER, not PHOTOGRAPHY
+    res_street = ProviderClassifier.classify("Delridge Way Southwest", raw_category="primary")
+    assert res_street.category == "OTHER"
+
+    # Real photography studio must classify as PHOTOGRAPHY
+    res_photo = ProviderClassifier.classify("Adonis Commercial Photography", raw_category="photographer")
+    assert res_photo.category == "PHOTOGRAPHY"
+
+
+def test_zero_fabricated_pricing_in_discovery():
+    """Verifies that discovered providers without legitimate price data have base_cost=None."""
+    from app.services.geospatial_service import geospatial_discovery
+
+    providers = geospatial_discovery.discover_real_providers("PHOTOGRAPHY", "Seattle", limit=3)
+    for p in providers:
+        # No fabricated $2500/hr
+        assert p.get("base_cost") is None
+        # Raw category must be preserved
+        assert "raw_category" in p
+        assert p["raw_category"] is not None
