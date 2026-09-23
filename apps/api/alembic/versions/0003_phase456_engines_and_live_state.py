@@ -29,7 +29,7 @@ def upgrade() -> None:
         batch_op.add_column(sa.Column('required_provider_category', sa.String(length=100), nullable=True))
         batch_op.add_column(sa.Column('duration_minutes', sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column('slack_minutes', sa.Integer(), nullable=True))
-        batch_op.add_column(sa.Column('is_critical_path', sa.Boolean(), nullable=False, server_default=sa.text('0')))
+        batch_op.add_column(sa.Column('is_critical_path', sa.Boolean(), nullable=False, server_default=sa.false()))
         batch_op.create_index('ix_tasks_key', ['key'])
 
     # 3. Expand Task Dependencies table with lag_minutes

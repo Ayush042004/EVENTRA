@@ -117,6 +117,17 @@ def get_event_specification(
 
 
 # --- Phase 1: Foundational Event Endpoints ---
+@router.get("", response_model=List[EventResponse])
+def list_events(
+    db: Session = Depends(get_db_session),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Lists all events from database."""
+    from app.models.event import Event
+    events = db.query(Event).order_by(Event.created_at.desc()).all()
+    return events
+
+
 @router.post("", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
 def create_event(
     payload: EventCreate,

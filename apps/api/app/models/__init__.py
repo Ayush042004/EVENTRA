@@ -37,6 +37,7 @@ from app.models.state_transition import StateTransition
 from app.models.audit import Audit, AuditRecord
 from app.models.verification import VerificationResult
 from app.models.notification import Notification
+from app.models.recovery import Recovery
 from app.models.requirement import Requirement
 from app.models.objective import Objective
 from app.models.constraint import Constraint

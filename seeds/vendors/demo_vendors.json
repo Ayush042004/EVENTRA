@@ -148,5 +148,18 @@
     "service_description": "Vintage PA horns and analog amplifiers.",
     "status": "INACTIVE",
     "availabilities": []
+  },
+  {
+    "id": "vnd-012-sea-av",
+    "name": "Emerald City AV & Broadcast",
+    "category": "av",
+    "city": "Seattle",
+    "contact_name": "Marcus Vance",
+    "contact_email": "marcus@emeraldcityav.demo",
+    "contact_phone": "+1-206-555-0199",
+    "base_cost": 950.0,
+    "service_description": "Rapid-deployment 4K display towers, staging audio consoles, and live stream switching.",
+    "status": "ACTIVE",
+    "availabilities": []
   }
 ]
