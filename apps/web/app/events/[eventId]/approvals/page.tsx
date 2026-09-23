@@ -59,7 +59,7 @@ export default function ApprovalsPage() {
 
       if (res.items.length > 0) {
         if (initialApprovalId) {
-          const match = res.items.find((a) => a.id === initialApprovalId);
+          const match = res.items.find((a: ApprovalRequestResponse) => a.id === initialApprovalId);
           setSelectedApproval(match || res.items[0]);
         } else if (!selectedApproval) {
           setSelectedApproval(res.items[0]);

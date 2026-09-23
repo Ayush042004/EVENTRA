@@ -68,7 +68,7 @@ export default function IncidentsPage() {
       setIncidents(res.items);
       if (res.items.length > 0) {
         if (initialIncidentId) {
-          const match = res.items.find((i) => i.id === initialIncidentId);
+          const match = res.items.find((i: IncidentResponse) => i.id === initialIncidentId);
           setSelectedIncident(match || res.items[0]);
         } else if (!selectedIncident) {
           setSelectedIncident(res.items[0]);

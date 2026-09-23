@@ -23,7 +23,7 @@ export function useIncidents(eventId: string | null) {
       if (res.items?.length > 0 && !selectedIncident) {
         setSelectedIncident(res.items[0]);
       } else if (selectedIncident) {
-        const updated = res.items.find((i) => i.id === selectedIncident.id);
+        const updated = res.items.find((i: IncidentResponse) => i.id === selectedIncident.id);
         if (updated) setSelectedIncident(updated);
       }
       setError(null);
