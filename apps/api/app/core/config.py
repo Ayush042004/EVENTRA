@@ -17,17 +17,30 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # Database configuration (PostgreSQL)
-    DATABASE_URL: str = "postgresql+psycopg://eventra_user:eventra_password@localhost:5432/eventra_db"
+    DATABASE_URL: str = "postgresql+psycopg://neondb_owner:npg_SXdJea6ZQmf2@ep-divine-mud-b5u94wxa.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 10
     DB_POOL_TIMEOUT: int = 10
     DB_ECHO: bool = False
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        if isinstance(v, str) and v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+psycopg://", 1)
+        return v
+
     # CORS configuration
-    CORS_ORIGINS: Union[str, List[str]] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    CORS_ORIGINS: Union[str, List[str]] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+    ]
 
     @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):
             if v == "*":
@@ -35,7 +48,14 @@ class Settings(BaseSettings):
             return [i.strip() for i in v.split(",") if i.strip()]
         elif isinstance(v, (list, tuple)):
             return list(v)
-        return ["http://localhost:3000"]
+        return [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3001",
+            "http://localhost:3002",
+            "http://127.0.0.1:3002",
+        ]
 
     # Security
     SECRET_KEY: str = "development-secret-key-change-in-production"
