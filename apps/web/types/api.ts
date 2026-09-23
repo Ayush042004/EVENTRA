@@ -193,6 +193,24 @@ export interface PaginatedVenuesResponse {
   offset: number;
 }
 
+export interface VenueDiscoveryRequest {
+  city?: string;
+  query?: string;
+  latitude?: number;
+  longitude?: number;
+  limit?: number;
+  save_to_db?: boolean;
+}
+
+export interface VenueDiscoveryResponse {
+  total_discovered: number;
+  total_created: number;
+  city: string;
+  source: string;
+  items: VenueResponse[];
+}
+
+
 export interface VenueAvailabilityResult {
   venue_id: string;
   is_available: boolean;

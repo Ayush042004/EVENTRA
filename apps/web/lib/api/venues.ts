@@ -50,3 +50,26 @@ export async function checkVenueSuitability(
     payload
   );
 }
+
+export interface VenueDiscoveryParams {
+  city?: string;
+  query?: string;
+  latitude?: number;
+  longitude?: number;
+  limit?: number;
+  save_to_db?: boolean;
+}
+
+export async function discoverVenues(
+  payload: VenueDiscoveryParams = {}
+): Promise<{ total_discovered: number; total_created: number; city: string; source: string; items: VenueResponse[] }> {
+  return apiClient.post("/venues/discover", payload);
+}
+
+export async function discoverVenuesForEvent(
+  eventId: string,
+  payload: VenueDiscoveryParams = {}
+): Promise<{ total_discovered: number; total_created: number; city: string; source: string; items: VenueResponse[] }> {
+  return apiClient.post(`/events/${eventId}/venues/discover`, payload);
+}
+

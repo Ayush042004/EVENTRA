@@ -85,7 +85,29 @@ class GoogleMapsScraperAdapter(ProviderDirectoryProvider):
             except Exception as exc:
                 logger.warning(f"Google Maps scraper run failed: {exc}")
 
-        # Fallback to simulated fixture if scraper container is not active
+        # Live Geospatial Network Fallback if scraper container is not active
+        try:
+            from app.services.geospatial_service import geospatial_discovery
+            live_providers = geospatial_discovery.discover_real_providers(
+                category=category,
+                city=city_target,
+                latitude=lat,
+                longitude=lon,
+                query=query,
+                limit=limit,
+            )
+            if live_providers:
+                latency = round((time.time() - start_time) * 1000, 2)
+                return IntegrationResult(
+                    data=live_providers,
+                    source=IntegrationSource.REAL,
+                    success=True,
+                    latency_ms=latency,
+                )
+        except Exception as live_exc:
+            logger.warning(f"Live provider discovery failed: {live_exc}")
+
+        # Fallback to simulated fixture if scraper container and live network are not available
         if self.fallback_to_mock:
             simulated = self._get_simulated_fixtures(category, city_target, lat, lon)
             latency = round((time.time() - start_time) * 1000, 2)
@@ -94,7 +116,7 @@ class GoogleMapsScraperAdapter(ProviderDirectoryProvider):
                 source=IntegrationSource.MOCK,
                 success=True,
                 latency_ms=latency,
-                error="Google Maps Scraper container not reachable on localhost:8080. Fallback simulated fixtures used.",
+                error="Google Maps Scraper container and live network unavailable. Fallback simulated fixtures used.",
             )
 
         return IntegrationResult(

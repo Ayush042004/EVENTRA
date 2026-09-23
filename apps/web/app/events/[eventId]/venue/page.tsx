@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { searchVenues, checkVenueAvailability, checkVenueSuitability } from "../../../../lib/api/venues";
+import { searchVenues, checkVenueAvailability, checkVenueSuitability, discoverVenues } from "../../../../lib/api/venues";
 import { useEvent } from "../../../../hooks/useEvent";
 import type { VenueResponse, VenueAvailabilityResult, VenueSuitabilityResult } from "../../../../types/api";
+
 import {
   Building2,
   Search,
@@ -78,6 +79,33 @@ export default function VenueDiscoveryPage() {
   const [evaluatingSuit, setEvaluatingSuit] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [selectedVenueIdForEvent, setSelectedVenueIdForEvent] = useState<string | null>(null);
+
+  // Live Real-World Geospatial Discovery State
+  const [liveDiscovering, setLiveDiscovering] = useState(false);
+  const [liveDiscoveredCount, setLiveDiscoveredCount] = useState<number | null>(null);
+
+  const handleDiscoverLiveVenues = async (targetCity?: string) => {
+    setLiveDiscovering(true);
+    const cityToQuery = targetCity || (selectedCity !== "ALL" ? selectedCity : "Seattle");
+    try {
+      const res = await discoverVenues({
+        city: cityToQuery,
+        query: searchQuery.trim() || undefined,
+        limit: 30,
+        save_to_db: true,
+      });
+      if (res && res.items && res.items.length > 0) {
+        setVenues(res.items);
+        setSelectedVenue(res.items[0]);
+        setLiveDiscoveredCount(res.total_discovered);
+        if (targetCity) setSelectedCity(targetCity);
+      }
+    } catch (err) {
+      console.error("Live discovery failed:", err);
+    } finally {
+      setLiveDiscovering(false);
+    }
+  };
 
   // Sync default city from event
   useEffect(() => {
@@ -298,6 +326,73 @@ export default function VenueDiscoveryPage() {
         </div>
       </div>
 
+      {/* Live Geospatial Network Radar Bar */}
+      <div className="px-6 py-2.5 bg-slate-950 border-b border-slate-800/80">
+        <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-cyan-950/30 border border-emerald-500/30 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-lg shadow-emerald-950/20">
+          <div className="flex items-center space-x-3">
+            <div className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shadow-sm shadow-emerald-400"></span>
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                  Live Geospatial Network: Real Physical Places
+                </span>
+                <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 font-semibold">
+                  Zero Mock Data
+                </span>
+                {liveDiscoveredCount !== null && (
+                  <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-cyan-950/80 text-cyan-300 border border-cyan-700/60 font-semibold">
+                    {liveDiscoveredCount} Live Places Synced
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Pulls live convention centers, theaters & halls from the OpenStreetMap global network with real coordinates & street addresses.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 flex-wrap">
+            <div className="flex items-center space-x-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800">
+              {["Seattle", "Mumbai", "Delhi", "Bengaluru"].map((c) => (
+                <button
+                  key={c}
+                  onClick={() => handleDiscoverLiveVenues(c)}
+                  disabled={liveDiscovering}
+                  className={`px-2.5 py-1 text-xs rounded-md font-semibold transition ${
+                    selectedCity === c
+                      ? "bg-emerald-500 text-slate-950 shadow-sm shadow-emerald-500/30"
+                      : "text-slate-300 hover:text-white hover:bg-slate-800"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => handleDiscoverLiveVenues()}
+              disabled={liveDiscovering}
+              className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all flex items-center space-x-1.5 shadow-md shadow-emerald-500/25 active:scale-95 disabled:opacity-50"
+            >
+              {liveDiscovering ? (
+                <>
+                  <span className="animate-spin inline-block w-3 h-3 border-2 border-slate-950 border-t-transparent rounded-full" />
+                  <span>Scanning Global Map Network...</span>
+                </>
+              ) : (
+                <>
+                  <Radio className="w-3.5 h-3.5 text-slate-950 animate-pulse" />
+                  <span>Fetch Live Real Places</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Main Workspace Body */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
         {/* Left Column: Venue Roster List (Visible in split & grid modes) */}
@@ -365,6 +460,29 @@ export default function VenueDiscoveryPage() {
                           <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
                           <span className="truncate">{v.address || v.city}</span>
                         </p>
+
+                        {/* Real-world Coordinates & Google Maps Link */}
+                        <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
+                          {v.latitude && v.longitude ? (
+                            <span className="text-emerald-400/90 flex items-center space-x-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                              <span>GPS: {v.latitude.toFixed(4)}°, {v.longitude.toFixed(4)}°</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">{v.city}</span>
+                          )}
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v.name + " " + v.city)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 hover:underline font-semibold"
+                            title="Verify on Google Maps"
+                          >
+                            <span>Google Maps</span>
+                            <Compass className="w-3 h-3" />
+                          </a>
+                        </div>
                       </div>
 
                       {/* Specs and Pricing */}

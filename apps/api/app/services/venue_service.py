@@ -270,3 +270,95 @@ class VenueService:
             availability_satisfied=availability_satisfied,
             is_suitable=is_suitable,
         )
+
+    def discover_live_venues(
+        self,
+        city: str,
+        query: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        limit: int = 25,
+        save_to_db: bool = True,
+    ) -> Tuple[List[Venue], int, str, str]:
+        """Discovers real venues from the live open geospatial network and optionally upserts them.
+
+        Returns: (venues, total_created, city, source)
+        """
+        from app.services.geospatial_service import geospatial_discovery
+
+        raw_venues = geospatial_discovery.discover_real_venues(
+            city=city,
+            query=query,
+            latitude=latitude,
+            longitude=longitude,
+            limit=limit,
+        )
+
+        source = "LIVE_OPENSTREETMAP_NETWORK"
+        total_created = 0
+        result_venues: List[Venue] = []
+
+        if not save_to_db:
+            import uuid
+            from app.models.venue import utc_now
+            for rv in raw_venues:
+                v = Venue(
+                    id=str(uuid.uuid4()),
+                    name=rv["name"],
+                    address=rv.get("address"),
+                    city=rv.get("city", city),
+                    latitude=rv.get("latitude"),
+                    longitude=rv.get("longitude"),
+                    capacity=rv.get("capacity", 500),
+                    venue_type=rv.get("venue_type", "Modern Event Space"),
+                    hourly_rate=rv.get("hourly_rate", 300.0),
+                    amenities=rv.get("amenities", []),
+                    status=rv.get("status", "ACTIVE"),
+                    created_at=utc_now(),
+                    updated_at=utc_now(),
+                )
+                result_venues.append(v)
+            return result_venues, 0, city, source
+
+        for rv in raw_venues:
+            v_name = rv["name"].strip()
+            # Deduplicate by matching name (case-insensitive) and city
+            existing = (
+                self.db.query(Venue)
+                .filter(
+                    func.lower(Venue.name) == v_name.lower(),
+                    func.lower(Venue.city) == city.strip().lower(),
+                )
+                .first()
+            )
+
+            if existing:
+                if rv.get("latitude") and not existing.latitude:
+                    existing.latitude = rv.get("latitude")
+                    existing.longitude = rv.get("longitude")
+                if rv.get("address") and not existing.address:
+                    existing.address = rv.get("address")
+                self.db.commit()
+                self.db.refresh(existing)
+                result_venues.append(existing)
+            else:
+                new_v = Venue(
+                    name=v_name,
+                    address=rv.get("address"),
+                    city=city.strip(),
+                    latitude=rv.get("latitude"),
+                    longitude=rv.get("longitude"),
+                    capacity=rv.get("capacity", 500),
+                    venue_type=rv.get("venue_type", "Modern Event Space"),
+                    hourly_rate=rv.get("hourly_rate", 300.0),
+                    amenities=rv.get("amenities", []),
+                    status="ACTIVE",
+                )
+                self.db.add(new_v)
+                self.db.commit()
+                self.db.refresh(new_v)
+                result_venues.append(new_v)
+                total_created += 1
+
+        return result_venues, total_created, city, source
+

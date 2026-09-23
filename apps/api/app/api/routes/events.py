@@ -19,6 +19,12 @@ from app.schemas.vendor import (
     ProviderDiscoveryResponse,
     VendorResponse,
 )
+from app.services.venue_service import VenueService
+from app.schemas.venue import (
+    VenueDiscoveryRequest,
+    VenueDiscoveryResponse,
+    VenueResponse,
+)
 from app.schemas.specification import (
     EventSpecification,
     EventSpecificationPreviewRequest,
@@ -228,3 +234,38 @@ def discover_providers_for_event(
         query_used=queries,
         items=[VendorResponse.model_validate(v) for v in vendors],
     )
+
+
+@router.post("/{event_id}/venues/discover", response_model=VenueDiscoveryResponse, status_code=status.HTTP_200_OK)
+def discover_venues_for_event(
+    event_id: str,
+    discovery_in: VenueDiscoveryRequest,
+    db: Session = Depends(get_db_session),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Context-aware live real venue discovery for an event."""
+    event_service = EventService(db)
+    event = event_service.get_event(event_id)
+    target_city = discovery_in.city
+    if not target_city and event and event.location and isinstance(event.location, dict):
+        target_city = event.location.get("city")
+    if not target_city:
+        target_city = "Seattle"
+
+    service = VenueService(db)
+    venues, created, city, source = service.discover_live_venues(
+        city=target_city,
+        query=discovery_in.query,
+        latitude=discovery_in.latitude,
+        longitude=discovery_in.longitude,
+        limit=discovery_in.limit,
+        save_to_db=discovery_in.save_to_db,
+    )
+    return VenueDiscoveryResponse(
+        total_discovered=len(venues),
+        total_created=created,
+        city=city,
+        source=source,
+        items=[VenueResponse.model_validate(v) for v in venues],
+    )
+

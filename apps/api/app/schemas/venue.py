@@ -105,3 +105,21 @@ class PaginatedVenuesResponse(BaseModel):
     items: List[VenueResponse]
     limit: int
     offset: int
+
+
+class VenueDiscoveryRequest(BaseModel):
+    city: Optional[str] = Field("Seattle", description="Target city for live geospatial discovery")
+    query: Optional[str] = Field(None, description="Custom search query (e.g. convention center, ballroom)")
+    latitude: Optional[float] = Field(None, description="Optional center latitude")
+    longitude: Optional[float] = Field(None, description="Optional center longitude")
+    limit: int = Field(25, ge=1, le=50, description="Max venues to discover")
+    save_to_db: bool = Field(True, description="Whether to persist discovered venues to the database")
+
+
+class VenueDiscoveryResponse(BaseModel):
+    total_discovered: int
+    total_created: int
+    city: str
+    source: str
+    items: List[VenueResponse]
+

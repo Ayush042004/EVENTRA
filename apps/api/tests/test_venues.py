@@ -276,3 +276,24 @@ def test_venue_api_endpoints(test_client: TestClient):
     assert suit_resp.status_code == 200
     assert suit_resp.json()["is_suitable"] is True
     assert suit_resp.json()["capacity_satisfied"] is True
+
+
+def test_venue_live_discovery_endpoint(test_client: TestClient):
+    """Test POST /venues/discover endpoint for real live venue discovery."""
+    response = test_client.post(
+        "/api/venues/discover",
+        json={"city": "Seattle", "limit": 3, "save_to_db": True},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["city"] == "Seattle"
+    assert data["total_discovered"] >= 1
+    assert data["source"] == "LIVE_OPENSTREETMAP_NETWORK"
+    assert len(data["items"]) >= 1
+    first = data["items"][0]
+    assert first["id"] is not None
+    assert first["name"] is not None
+    assert first["city"] == "Seattle"
+    assert first["latitude"] is not None
+    assert first["longitude"] is not None
+

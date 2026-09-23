@@ -15,13 +15,40 @@ from app.schemas.venue import (
     VenueSuitabilityCheck,
     VenueSuitabilityResult,
     PaginatedVenuesResponse,
+    VenueDiscoveryRequest,
+    VenueDiscoveryResponse,
 )
 from app.core.exceptions import AppException
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 
 
+@router.post("/discover", response_model=VenueDiscoveryResponse, status_code=status.HTTP_200_OK)
+def discover_venues(
+    discovery_in: VenueDiscoveryRequest,
+    db: Session = Depends(get_db_session),
+):
+    """Discovers real physical venues dynamically from the live open geospatial network (zero API keys)."""
+    service = VenueService(db)
+    venues, created, city, source = service.discover_live_venues(
+        city=discovery_in.city or "Seattle",
+        query=discovery_in.query,
+        latitude=discovery_in.latitude,
+        longitude=discovery_in.longitude,
+        limit=discovery_in.limit,
+        save_to_db=discovery_in.save_to_db,
+    )
+    return VenueDiscoveryResponse(
+        total_discovered=len(venues),
+        total_created=created,
+        city=city,
+        source=source,
+        items=[VenueResponse.model_validate(v) for v in venues],
+    )
+
+
 @router.get("", response_model=PaginatedVenuesResponse)
+
 def search_venues(
     city: Optional[str] = Query(None, description="Filter by city (case-insensitive)"),
     min_capacity: Optional[int] = Query(None, ge=1, description="Minimum guest capacity"),
