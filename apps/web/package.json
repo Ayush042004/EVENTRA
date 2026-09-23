@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@eventra/contracts": "*",
+    "@types/leaflet": "^1.9.22",
     "clsx": "^2.1.1",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.378.0",
     "next": "^14.2.3",
     "react": "^18.3.1",

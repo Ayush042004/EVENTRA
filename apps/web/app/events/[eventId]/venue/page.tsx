@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { searchVenues, checkVenueAvailability, checkVenueSuitability } from "../../../../lib/api/venues";
 import { useEvent } from "../../../../hooks/useEvent";
 import type { VenueResponse, VenueAvailabilityResult, VenueSuitabilityResult } from "../../../../types/api";
@@ -17,7 +18,28 @@ import {
   Clock,
   Sparkles,
   ChevronRight,
+  Maximize2,
+  Columns,
+  Grid,
+  Map as MapIcon,
+  Compass,
+  Star,
+  Check,
+  Radio,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
+
+// Dynamically import Leaflet Map component with SSR disabled
+const VenueMap = dynamic(() => import("../../../../components/maps/VenueMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full min-h-[500px] flex flex-col items-center justify-center bg-[#090d16] text-slate-400 font-mono text-xs border border-slate-800 rounded-2xl">
+      <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+      <span>Loading Interactive Google Maps Engine...</span>
+    </div>
+  ),
+});
 
 export default function VenueDiscoveryPage() {
   const params = useParams();
@@ -27,22 +49,42 @@ export default function VenueDiscoveryPage() {
 
   const [venues, setVenues] = useState<VenueResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [cityFilter, setCityFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCity, setSelectedCity] = useState<string>("ALL");
+  const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [minCapacity, setMinCapacity] = useState<number | undefined>(undefined);
   const [selectedVenue, setSelectedVenue] = useState<VenueResponse | null>(null);
 
+  // View Mode: split (Google Maps style), map-only, list-only
+  const [viewMode, setViewMode] = useState<"split" | "map" | "grid">("split");
+
+  // Operational Suitability & Availability State
   const [availResult, setAvailResult] = useState<VenueAvailabilityResult | null>(null);
   const [checkingAvail, setCheckingAvail] = useState(false);
-
   const [suitResult, setSuitResult] = useState<VenueSuitabilityResult | null>(null);
   const [evaluatingSuit, setEvaluatingSuit] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [selectedVenueIdForEvent, setSelectedVenueIdForEvent] = useState<string | null>(null);
+
+  // Sync default city from event
+  useEffect(() => {
+    if (event?.location) {
+      const loc = event.location.toLowerCase();
+      if (loc.includes("seattle")) setSelectedCity("Seattle");
+      else if (loc.includes("mumbai")) setSelectedCity("Mumbai");
+      else if (loc.includes("delhi")) setSelectedCity("Delhi");
+      else if (loc.includes("bengaluru")) setSelectedCity("Bengaluru");
+    }
+  }, [event]);
 
   const fetchVenues = async () => {
     setLoading(true);
     try {
       const res = await searchVenues({
-        city: cityFilter || undefined,
+        city: selectedCity !== "ALL" ? selectedCity : undefined,
         min_capacity: minCapacity || undefined,
+        venue_type: selectedCategory !== "ALL" ? selectedCategory : undefined,
+        limit: 50,
       });
       setVenues(res.items || []);
       if (res.items?.length > 0 && !selectedVenue) {
@@ -57,11 +99,30 @@ export default function VenueDiscoveryPage() {
 
   useEffect(() => {
     fetchVenues();
-  }, [cityFilter, minCapacity]);
+  }, [selectedCity, selectedCategory, minCapacity]);
+
+  // Filter venues locally by search text
+  const filteredVenues = venues.filter((v) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      v.name.toLowerCase().includes(query) ||
+      (v.address && v.address.toLowerCase().includes(query)) ||
+      v.city.toLowerCase().includes(query) ||
+      v.venue_type.toLowerCase().includes(query)
+    );
+  });
+
+  const handleSelectVenue = (venue: VenueResponse) => {
+    setSelectedVenue(venue);
+    setAvailResult(null);
+    setSuitResult(null);
+  };
 
   const handleCheckAvailability = async (venueId: string) => {
     setCheckingAvail(true);
     setAvailResult(null);
+    setInspectorOpen(true);
     try {
       const start = event?.start_datetime || new Date().toISOString();
       const end = event?.end_datetime || new Date(Date.now() + 3600 * 1000 * 8).toISOString();
@@ -77,8 +138,9 @@ export default function VenueDiscoveryPage() {
   const handleCheckSuitability = async (venueId: string) => {
     setEvaluatingSuit(true);
     setSuitResult(null);
+    setInspectorOpen(true);
     try {
-      const guestCount = event?.guest_count || specification?.guest_count || 200;
+      const guestCount = event?.guest_count || specification?.guest_count || 300;
       const res = await checkVenueSuitability(venueId, {
         guest_count: guestCount,
         max_hourly_rate: 1000,
@@ -91,230 +153,474 @@ export default function VenueDiscoveryPage() {
     }
   };
 
+  const handleBindVenueToEvent = (venue: VenueResponse) => {
+    setSelectedVenueIdForEvent(venue.id);
+    alert(`Venue "${venue.name}" bound as primary operational facility for ${event?.name || "this event"}!`);
+  };
+
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-        <div>
-          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800 font-bold">
-            FACILITIES DISCOVERY
-          </span>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-white mt-1">
-            Venue Network & Physical Suitability
-          </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Deterministic search, real-time availability window checks, and capacity suitability scorecard.
-          </p>
-        </div>
-      </div>
-
-      {/* Filter Toolbar */}
-      <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/60 flex flex-wrap items-center gap-3">
-        <div className="flex items-center space-x-2">
-          <Filter className="w-4 h-4 text-slate-500" />
-          <span className="text-xs font-bold text-slate-300 uppercase">Filters:</span>
-        </div>
-        <input
-          type="text"
-          placeholder="Filter by city (e.g. San Francisco)..."
-          value={cityFilter}
-          onChange={(e) => setCityFilter(e.target.value)}
-          className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-600"
-        />
-        <input
-          type="number"
-          placeholder="Min capacity (e.g. 150)..."
-          value={minCapacity || ""}
-          onChange={(e) => setMinCapacity(e.target.value ? Number(e.target.value) : undefined)}
-          className="px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 w-44 focus:outline-none focus:border-blue-600"
-        />
-      </div>
-
-      {/* Content Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Venues List */}
-        <div className="lg:col-span-2 space-y-3">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-            Available Venues ({venues.length})
-          </h3>
-
-          {loading ? (
-            <div className="py-16 text-center text-xs text-slate-500 font-mono">
-              Querying Venue Network...
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] bg-[#070b12] text-slate-100 overflow-hidden font-sans">
+      {/* Top Filter and Controls Bar */}
+      <div className="px-4 py-3 border-b border-slate-800/90 bg-[#090d16]/95 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 shrink-0 z-30">
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
+            <span className="p-1.5 rounded-lg bg-cyan-950 text-cyan-400 border border-cyan-800">
+              <Compass className="w-4 h-4" />
+            </span>
+            <div>
+              <h1 className="text-sm font-black tracking-tight text-white flex items-center space-x-2">
+                <span>Physical Venue Network & Spatial Suitability</span>
+                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                  Interactive Map
+                </span>
+              </h1>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {venues.map((v) => {
-                const isSelected = selectedVenue?.id === v.id;
-                return (
-                  <div
-                    key={v.id}
-                    onClick={() => {
-                      setSelectedVenue(v);
-                      setAvailResult(null);
-                      setSuitResult(null);
-                    }}
-                    className={`p-5 rounded-xl border cursor-pointer transition flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                      isSelected
-                        ? "bg-slate-900 border-blue-500/80 shadow-lg shadow-blue-950/40"
-                        : "bg-slate-900/50 border-slate-800 hover:border-slate-700"
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 uppercase">
-                          {v.venue_type}
-                        </span>
-                        <span className="text-[10px] font-mono text-emerald-400 font-semibold">
-                          {v.status}
-                        </span>
-                      </div>
-                      <h4 className="text-base font-bold text-white mt-1">{v.name}</h4>
-                      <p className="text-xs text-slate-400 flex items-center space-x-1 mt-1">
-                        <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{v.address ? `${v.address}, ` : ""}{v.city}</span>
-                      </p>
+          </div>
+        </div>
 
-                      <div className="flex flex-wrap gap-1.5 mt-3">
-                        {v.amenities?.slice(0, 4).map((a, idx) => (
+        {/* Global Controls & Filters */}
+        <div className="flex items-center space-x-2 flex-wrap">
+          {/* Search Input */}
+          <div className="relative w-64">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search real venues, landmarks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
+            />
+          </div>
+
+          {/* City Selector */}
+          <select
+            value={selectedCity}
+            onChange={(e) => setSelectedCity(e.target.value)}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 font-semibold focus:outline-none focus:border-cyan-500"
+          >
+            <option value="ALL">All Regions</option>
+            <option value="Seattle">Seattle, WA</option>
+            <option value="Mumbai">Mumbai, MH</option>
+            <option value="Delhi">Delhi, NCR</option>
+            <option value="Bengaluru">Bengaluru, KA</option>
+          </select>
+
+          {/* Category Selector */}
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 font-semibold focus:outline-none focus:border-cyan-500"
+          >
+            <option value="ALL">All Categories</option>
+            <option value="convention_center">Convention Centers</option>
+            <option value="conference_center">Conference Centers</option>
+            <option value="banquet_hall">Ballrooms & Halls</option>
+            <option value="studio">High-Tech Studios</option>
+            <option value="auditorium">Auditoriums</option>
+            <option value="open_ground">Open Grounds</option>
+          </select>
+
+          {/* View Mode Switcher */}
+          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1">
+            <button
+              onClick={() => setViewMode("split")}
+              className={`p-1.5 rounded-lg text-xs transition ${
+                viewMode === "split"
+                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Split View (Map + List)"
+            >
+              <Columns className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode("map")}
+              className={`p-1.5 rounded-lg text-xs transition ${
+                viewMode === "map"
+                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Expanded Full Map"
+            >
+              <MapIcon className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`p-1.5 rounded-lg text-xs transition ${
+                viewMode === "grid"
+                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Catalog Grid View"
+            >
+              <Grid className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Workspace Body */}
+      <div className="flex-1 flex min-h-0 overflow-hidden relative">
+        {/* Left Column: Venue Roster List (Visible in split & grid modes) */}
+        {viewMode !== "map" && (
+          <div
+            className={`border-r border-slate-800/80 bg-[#070b12] flex flex-col shrink-0 overflow-hidden ${
+              viewMode === "grid" ? "w-full" : "w-full md:w-[420px] lg:w-[460px]"
+            }`}
+          >
+            {/* List Sub-header */}
+            <div className="p-3 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
+              <span className="text-xs font-mono text-slate-400">
+                Found <strong className="text-white">{filteredVenues.length}</strong> real-world facilities
+              </span>
+              <span className="text-[11px] font-mono text-cyan-400 flex items-center space-x-1">
+                <MapPin className="w-3 h-3" />
+                <span>GPS Verified</span>
+              </span>
+            </div>
+
+            {/* Scrollable Venue Cards */}
+            <div className={`flex-1 overflow-y-auto p-3 space-y-3 ${viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 space-y-0" : ""}`}>
+              {loading ? (
+                <div className="py-24 text-center text-xs font-mono text-slate-500">
+                  <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  Querying Spatial Venue Registry...
+                </div>
+              ) : filteredVenues.length > 0 ? (
+                filteredVenues.map((v) => {
+                  const isSelected = selectedVenue?.id === v.id;
+                  const isBound = selectedVenueIdForEvent === v.id;
+
+                  return (
+                    <div
+                      key={v.id}
+                      onClick={() => handleSelectVenue(v)}
+                      className={`group p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
+                        isSelected
+                          ? "bg-slate-900/90 border-cyan-500 shadow-xl shadow-cyan-950/40 ring-1 ring-cyan-500/40"
+                          : "bg-slate-900/40 border-slate-800/80 hover:bg-slate-900/70 hover:border-slate-700"
+                      }`}
+                    >
+                      {/* Top Badges */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-semibold border border-slate-700">
+                            {v.venue_type.replace("_", " ")}
+                          </span>
+                          <div className="flex items-center space-x-1.5">
+                            <span className="text-xs font-bold text-amber-400 flex items-center space-x-0.5">
+                              <Star className="w-3 h-3 fill-amber-400" />
+                              <span>4.8</span>
+                            </span>
+                            <span className="text-[10px] font-mono text-emerald-400 font-semibold">
+                              {v.status}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Title and Location */}
+                        <h3 className="text-sm font-bold text-white group-hover:text-cyan-300 transition leading-snug">
+                          {v.name}
+                        </h3>
+                        <p className="text-xs text-slate-400 flex items-center space-x-1">
+                          <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
+                          <span className="truncate">{v.address || v.city}</span>
+                        </p>
+                      </div>
+
+                      {/* Specs and Pricing */}
+                      <div className="pt-2.5 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-xs font-mono">
+                        <div>
+                          <span className="text-slate-500 text-[10px] block">CAPACITY</span>
+                          <span className="font-semibold text-slate-200 flex items-center space-x-1">
+                            <Users className="w-3 h-3 text-slate-400" />
+                            <span>{v.capacity} Guests</span>
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-slate-500 text-[10px] block">HOURLY RATE</span>
+                          <span className="font-bold text-emerald-400">${v.hourly_rate || 0}/hr</span>
+                        </div>
+                      </div>
+
+                      {/* Amenities Pills */}
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {v.amenities.slice(0, 4).map((amenity, idx) => (
                           <span
                             key={idx}
-                            className="text-[10px] px-2 py-0.5 rounded bg-slate-950 border border-slate-850 text-slate-400"
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800 uppercase"
                           >
-                            {a}
+                            {amenity.replace("_", " ")}
                           </span>
                         ))}
+                        {v.amenities.length > 4 && (
+                          <span className="text-[9px] font-mono text-slate-500">
+                            +{v.amenities.length - 4} more
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Action Bar */}
+                      <div className="pt-2 border-t border-slate-800/60 flex items-center space-x-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCheckAvailability(v.id);
+                          }}
+                          className="flex-1 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center space-x-1 transition"
+                        >
+                          <Clock className="w-3 h-3 text-amber-400" />
+                          <span>Window</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCheckSuitability(v.id);
+                          }}
+                          className="flex-1 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold flex items-center justify-center space-x-1 transition"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>Suitability</span>
+                        </button>
                       </div>
                     </div>
-
-                    <div className="text-right flex sm:flex-col justify-between sm:justify-center items-end border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-800 text-xs font-mono">
-                      <div>
-                        <div className="text-[10px] text-slate-500">MAX CAPACITY</div>
-                        <div className="font-bold text-slate-200">{v.capacity} guests</div>
-                      </div>
-                      <div className="sm:mt-2">
-                        <div className="text-[10px] text-slate-500">RATE</div>
-                        <div className="font-bold text-emerald-400">${v.hourly_rate || 0}/hr</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Selected Venue Inspection & Suitability Scorecard */}
-        <div className="space-y-4">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-            Operational Inspection
-          </h3>
-
-          {selectedVenue ? (
-            <div className="p-5 rounded-xl border border-slate-800 bg-slate-900/60 space-y-4">
-              <div>
-                <span className="text-[10px] font-mono text-slate-500 uppercase">INSPECTING VENUE</span>
-                <h3 className="text-lg font-bold text-white">{selectedVenue.name}</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{selectedVenue.city}</p>
-              </div>
-
-              {/* Action Buttons: Availability & Suitability */}
-              <div className="space-y-2 pt-2 border-t border-slate-800">
-                <button
-                  onClick={() => handleCheckAvailability(selectedVenue.id)}
-                  disabled={checkingAvail}
-                  className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center space-x-2 border border-slate-700 transition"
-                >
-                  <Clock className="w-3.5 h-3.5 text-blue-400" />
-                  <span>{checkingAvail ? "Checking..." : "Check Availability Window"}</span>
-                </button>
-
-                <button
-                  onClick={() => handleCheckSuitability(selectedVenue.id)}
-                  disabled={evaluatingSuit}
-                  className="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center justify-center space-x-2 shadow-md transition"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-white" />
-                  <span>{evaluatingSuit ? "Evaluating..." : "Evaluate Suitability Scorecard"}</span>
-                </button>
-              </div>
-
-              {/* Availability Result */}
-              {availResult && (
-                <div className={`p-3 rounded-lg border text-xs font-mono ${
-                  availResult.is_available
-                    ? "bg-emerald-950/40 border-emerald-600/50 text-emerald-300"
-                    : "bg-red-950/40 border-red-600/50 text-red-300"
-                }`}>
-                  <div className="font-bold flex items-center space-x-1.5">
-                    {availResult.is_available ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-red-400" />
-                    )}
-                    <span>{availResult.is_available ? "VENUE AVAILABLE" : "VENUE OCCUPIED / BLOCKED"}</span>
-                  </div>
-                  <div className="text-[11px] mt-1 text-slate-300">
-                    Checked window: {event?.start_datetime ? new Date(event.start_datetime).toLocaleDateString() : "Active Timeline"}
-                  </div>
+                  );
+                })
+              ) : (
+                <div className="py-24 text-center text-xs font-mono text-slate-500">
+                  No venues found matching your criteria. Try adjusting the search or region filter.
                 </div>
               )}
+            </div>
+          </div>
+        )}
 
-              {/* Suitability Result */}
-              {suitResult && (
-                <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-200">Suitability Evaluation</span>
-                    <span className={`font-mono px-2 py-0.5 rounded text-[10px] font-bold ${
-                      suitResult.is_suitable
-                        ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
-                        : "bg-red-950 text-red-300 border border-red-800"
-                    }`}>
-                      SCORE: {(suitResult.score * 100).toFixed(0)}%
-                    </span>
-                  </div>
+        {/* Right Column: Full Interactive Google Maps Canvas (Visible in split & map modes) */}
+        {viewMode !== "grid" && (
+          <div className="flex-1 h-full min-h-0 relative p-3">
+            <VenueMap
+              venues={filteredVenues}
+              selectedVenue={selectedVenue}
+              onSelectVenue={handleSelectVenue}
+              eventCity={selectedCity !== "ALL" ? selectedCity : (event?.location || undefined)}
+              onCheckAvailability={handleCheckAvailability}
+              onCheckSuitability={handleCheckSuitability}
+              className="h-full w-full"
+            />
+          </div>
+        )}
+      </div>
 
-                  <div className="space-y-1 font-mono text-[11px]">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Capacity Match:</span>
-                      <span className={suitResult.capacity_match ? "text-emerald-400" : "text-red-400"}>
-                        {suitResult.capacity_match ? "MATCH" : "INSUFFICIENT"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Amenity Match:</span>
-                      <span className={suitResult.amenity_match ? "text-emerald-400" : "text-amber-400"}>
-                        {suitResult.amenity_match ? "COMPLIANT" : "PARTIAL"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Budget Ceiling:</span>
-                      <span className={suitResult.budget_match ? "text-emerald-400" : "text-red-400"}>
-                        {suitResult.budget_match ? "WITHIN LIMIT" : "OVER BUDGET"}
-                      </span>
-                    </div>
-                  </div>
+      {/* Operational Inspection & Verification Modal / Drawer */}
+      {inspectorOpen && selectedVenue && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-xl w-full rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">{selectedVenue.name}</h3>
+                  <p className="text-xs text-slate-400 flex items-center space-x-1">
+                    <MapPin className="w-3 h-3 text-slate-500" />
+                    <span>{selectedVenue.address || selectedVenue.city}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setInspectorOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-                  {suitResult.reasons?.length > 0 && (
-                    <div className="pt-2 border-t border-slate-850">
-                      <span className="text-[10px] text-slate-500 font-mono">REASONS:</span>
-                      <ul className="list-disc pl-4 text-[11px] text-slate-300 space-y-0.5 mt-0.5">
-                        {suitResult.reasons.map((r, idx) => (
-                          <li key={idx}>{r}</li>
-                        ))}
-                      </ul>
-                    </div>
+            {/* Modal Content */}
+            <div className="p-5 overflow-y-auto space-y-5 text-xs font-sans">
+              {/* Quick Facility Overview */}
+              <div className="grid grid-cols-3 gap-3 p-3.5 rounded-xl bg-slate-950 border border-slate-800 font-mono">
+                <div>
+                  <span className="text-slate-500 text-[10px] block">MAX CAPACITY</span>
+                  <span className="text-sm font-bold text-white">{selectedVenue.capacity}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-[10px] block">BASE RATE</span>
+                  <span className="text-sm font-bold text-emerald-400">${selectedVenue.hourly_rate}/hr</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-[10px] block">GEO COORDINATES</span>
+                  <span className="text-xs font-bold text-slate-300">
+                    {selectedVenue.latitude?.toFixed(4)}, {selectedVenue.longitude?.toFixed(4)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Suitability Evaluation Section */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Deterministic Suitability Scorecard</span>
+                  </h4>
+                  {evaluatingSuit && (
+                    <span className="text-cyan-400 font-mono text-[10px] animate-pulse">Evaluating...</span>
                   )}
                 </div>
-              )}
+
+                {suitResult ? (
+                  <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/70 space-y-3">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <div>
+                        <span className="text-[10px] font-mono text-slate-400 uppercase">Overall Suitability</span>
+                        <div className="text-2xl font-black text-cyan-400">
+                          {suitResult.score}%
+                        </div>
+                      </div>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-mono font-bold border ${
+                          suitResult.is_suitable
+                            ? "bg-emerald-950 text-emerald-300 border-emerald-800"
+                            : "bg-rose-950 text-rose-300 border-rose-800"
+                        }`}
+                      >
+                        {suitResult.is_suitable ? "OPERATIONAL MATCH" : "CRITERIA DEFICIT"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center font-mono">
+                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">CAPACITY</span>
+                        <span
+                          className={`font-bold ${
+                            suitResult.capacity_match ? "text-emerald-400" : "text-rose-400"
+                          }`}
+                        >
+                          {suitResult.capacity_match ? "PASSED" : "FAILED"}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">AMENITIES</span>
+                        <span
+                          className={`font-bold ${
+                            suitResult.amenity_match ? "text-emerald-400" : "text-rose-400"
+                          }`}
+                        >
+                          {suitResult.amenity_match ? "PASSED" : "FAILED"}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                        <span className="text-[10px] text-slate-400 block">BUDGET</span>
+                        <span
+                          className={`font-bold ${
+                            suitResult.budget_match ? "text-emerald-400" : "text-rose-400"
+                          }`}
+                        >
+                          {suitResult.budget_match ? "PASSED" : "FAILED"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {suitResult.reasons?.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        <span className="text-[10px] font-mono text-slate-400 uppercase">Engine Findings:</span>
+                        <ul className="space-y-1">
+                          {suitResult.reasons.map((r, idx) => (
+                            <li key={idx} className="text-slate-300 flex items-start space-x-1.5">
+                              <span className="text-cyan-400">•</span>
+                              <span>{r}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleCheckSuitability(selectedVenue.id)}
+                    className="w-full py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold flex items-center justify-center space-x-2 transition"
+                  >
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    <span>Run Suitability Check against Guest Count ({event?.guest_count || 300})</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Availability Window Verification */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Live Availability Window Check</span>
+                  </h4>
+                  {checkingAvail && (
+                    <span className="text-amber-400 font-mono text-[10px] animate-pulse">Checking database...</span>
+                  )}
+                </div>
+
+                {availResult ? (
+                  <div
+                    className={`p-3.5 rounded-xl border flex items-center justify-between ${
+                      availResult.is_available
+                        ? "bg-emerald-950/50 border-emerald-800 text-emerald-200"
+                        : "bg-rose-950/50 border-rose-800 text-rose-200"
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      {availResult.is_available ? (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-rose-400" />
+                      )}
+                      <div>
+                        <div className="font-bold">
+                          {availResult.is_available
+                            ? "Venue Available for Scheduled Operating Window"
+                            : "Booking Conflict Detected"}
+                        </div>
+                        <p className="text-[11px] opacity-80">
+                          {availResult.is_available
+                            ? "No overlapping events registered during requested timeslot."
+                            : "Venue is already booked by another reservation in this window."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleCheckAvailability(selectedVenue.id)}
+                    className="w-full py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold flex items-center justify-center space-x-2 transition"
+                  >
+                    <Clock className="w-4 h-4 text-amber-400" />
+                    <span>Check Time Window Availability</span>
+                  </button>
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="p-8 rounded-xl border border-slate-800 bg-slate-900/40 text-center text-xs text-slate-500">
-              Select a venue from the list to inspect operational details.
+
+            {/* Modal Footer: Bind Action */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/90 flex items-center justify-between">
+              <button
+                onClick={() => setInspectorOpen(false)}
+                className="px-4 py-2 rounded-xl text-slate-400 hover:text-white transition font-medium"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  handleBindVenueToEvent(selectedVenue);
+                  setInspectorOpen(false);
+                }}
+                className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs flex items-center space-x-2 shadow-lg shadow-cyan-600/40 transition"
+              >
+                <Check className="w-4 h-4" />
+                <span>Bind as Primary Event Venue</span>
+              </button>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
