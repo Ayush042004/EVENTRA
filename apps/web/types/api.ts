@@ -239,6 +239,18 @@ export interface VendorResponse {
   name: string;
   category: string;
   city: string;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  rating?: number | null;
+  review_count?: number | null;
+  distance_km?: number | null;
+  is_assigned?: boolean;
+  maps_url?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  hourly_rate?: number | null;
+  capabilities?: string[];
   contact_name?: string | null;
   contact_email?: string | null;
   contact_phone?: string | null;
@@ -247,6 +259,31 @@ export interface VendorResponse {
   status: string;
   created_at: string;
   updated_at: string;
+}
+
+export type DiscoveryEntityType = "VENUE" | "PROVIDER";
+
+export interface DiscoveryMapEntity {
+  id: string;
+  name: string;
+  entity_type: DiscoveryEntityType;
+  category: string;
+  latitude: number;
+  longitude: number;
+  address: string;
+  city: string;
+  rating?: number | null;
+  review_count?: number | null;
+  distance_km?: number | null;
+  maps_url?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  hourly_rate?: number | null;
+  capacity?: number | null;
+  amenities?: string[];
+  capabilities?: string[];
+  status?: string;
+  is_assigned?: boolean;
 }
 
 export interface PaginatedVendorsResponse {

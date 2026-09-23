@@ -322,7 +322,6 @@ class VenueService:
 
         for rv in raw_venues:
             v_name = rv["name"].strip()
-            # Deduplicate by matching name (case-insensitive) and city
             existing = (
                 self.db.query(Venue)
                 .filter(
@@ -338,8 +337,6 @@ class VenueService:
                     existing.longitude = rv.get("longitude")
                 if rv.get("address") and not existing.address:
                     existing.address = rv.get("address")
-                self.db.commit()
-                self.db.refresh(existing)
                 result_venues.append(existing)
             else:
                 new_v = Venue(
@@ -355,10 +352,12 @@ class VenueService:
                     status="ACTIVE",
                 )
                 self.db.add(new_v)
-                self.db.commit()
-                self.db.refresh(new_v)
                 result_venues.append(new_v)
                 total_created += 1
+
+        self.db.commit()
+        for v in result_venues:
+            self.db.refresh(v)
 
         return result_venues, total_created, city, source
 

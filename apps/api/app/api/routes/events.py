@@ -218,7 +218,7 @@ def discover_providers_for_event(
     """Context-aware provider discovery for an event using event location, venue, and requirement."""
     service = VendorService(db)
     try:
-        vendors, created, updated, source, queries = service.discover_providers_for_event(
+        vendors, created, updated, source, queries, anchor_coords, anchor_label, anchor_mode = service.discover_providers_for_event(
             event_id=event_id,
             request=discovery_in,
         )
@@ -232,6 +232,9 @@ def discover_providers_for_event(
         total_updated=updated,
         source=source,
         query_used=queries,
+        anchor_coordinates=[anchor_coords[0], anchor_coords[1]] if anchor_coords else None,
+        anchor_label=anchor_label,
+        anchor_mode=anchor_mode,
         items=[VendorResponse.model_validate(v) for v in vendors],
     )
 

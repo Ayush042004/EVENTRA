@@ -1,25 +1,28 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { searchVenues, checkVenueAvailability, checkVenueSuitability, discoverVenues } from "../../../../lib/api/venues";
+import { discoverProvidersForEvent, createAssignment, getAssignmentsForEvent } from "../../../../lib/api/vendors";
 import { useEvent } from "../../../../hooks/useEvent";
-import type { VenueResponse, VenueAvailabilityResult, VenueSuitabilityResult } from "../../../../types/api";
+import type {
+  VenueResponse,
+  VendorResponse,
+  DiscoveryMapEntity,
+  VenueAvailabilityResult,
+  VenueSuitabilityResult,
+} from "../../../../types/api";
 
 import {
   Building2,
   Search,
-  Filter,
   Users,
-  DollarSign,
   MapPin,
   CheckCircle2,
   XCircle,
   Clock,
   Sparkles,
-  ChevronRight,
-  Maximize2,
   Columns,
   Grid,
   Map as MapIcon,
@@ -27,87 +30,91 @@ import {
   Star,
   Check,
   Radio,
-  SlidersHorizontal,
   X,
+  Camera,
+  Utensils,
+  Volume2,
+  Flower2,
+  Music,
+  Shield,
+  Package,
+  Plus,
+  Navigation,
+  ExternalLink,
+  Phone,
+  Globe,
+  SlidersHorizontal,
 } from "lucide-react";
 
-// Dynamically import Leaflet Map component with SSR disabled
-const VenueMap = dynamic(() => import("../../../../components/maps/VenueMap"), {
+// Dynamically import Leaflet DiscoveryMap with SSR disabled
+const DiscoveryMap = dynamic(() => import("../../../../components/maps/DiscoveryMap"), {
   ssr: false,
   loading: () => (
     <div className="w-full h-full min-h-[500px] flex flex-col items-center justify-center bg-[#090d16] text-slate-400 font-mono text-xs border border-slate-800 rounded-2xl">
       <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-      <span>Loading Interactive Map Engine (Zero API Key)...</span>
+      <span>Loading EVENTRA Operational Map Engine...</span>
     </div>
   ),
 });
 
-// Dynamically import react-simple-maps component
-const SimpleSvgMap = dynamic(() => import("../../../../components/maps/SimpleSvgMap"), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full min-h-[500px] flex flex-col items-center justify-center bg-[#090d16] text-slate-400 font-mono text-xs border border-slate-800 rounded-2xl">
-      <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-      <span>Loading react-simple-maps Engine...</span>
-    </div>
-  ),
-});
+// Category definition for quick discovery
+const DISCOVERY_DOMAINS = [
+  { key: "VENUE", label: "Venues & Spaces", icon: Building2, defaultCategory: "VENUE" },
+  { key: "PHOTOGRAPHY", label: "Photography", icon: Camera, defaultCategory: "PHOTOGRAPHY" },
+  { key: "CATERING", label: "Catering", icon: Utensils, defaultCategory: "CATERING" },
+  { key: "AV_TECH", label: "AV & Sound", icon: Volume2, defaultCategory: "AV_TECH" },
+  { key: "DECOR", label: "Decor & Floral", icon: Flower2, defaultCategory: "DECOR" },
+  { key: "DJ_MUSIC", label: "DJ & Music", icon: Music, defaultCategory: "DJ_MUSIC" },
+  { key: "SECURITY", label: "Security", icon: Shield, defaultCategory: "SECURITY" },
+  { key: "RENTALS", label: "Rentals", icon: Package, defaultCategory: "RENTALS" },
+];
 
-export default function VenueDiscoveryPage() {
+export default function PhysicalNetworkDiscoveryPage() {
   const params = useParams();
   const eventId = params?.eventId as string;
 
   const { event, specification } = useEvent(eventId);
 
-  const [venues, setVenues] = useState<VenueResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Active Category Domain (Default: VENUE or requirement)
+  const [activeDomain, setActiveDomain] = useState<string>("VENUE");
+
+  // Search, Location & Anchor Mode State
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCity, setSelectedCity] = useState<string>("ALL");
-  const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
-  const [minCapacity, setMinCapacity] = useState<number | undefined>(undefined);
-  const [selectedVenue, setSelectedVenue] = useState<VenueResponse | null>(null);
+  const [anchorMode, setAnchorMode] = useState<"NEAR_EVENT" | "NEAR_ME" | "REGION">("NEAR_EVENT");
+  const [selectedCity, setSelectedCity] = useState<string>("Seattle");
+  const [radiusKm, setRadiusKm] = useState<number | undefined>(undefined);
+  const [userCoords, setUserCoords] = useState<[number, number] | null>(null);
+
+  // Unified Map Entities
+  const [places, setPlaces] = useState<DiscoveryMapEntity[]>([]);
+  const [selectedPlace, setSelectedPlace] = useState<DiscoveryMapEntity | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [anchorCoordinates, setAnchorCoordinates] = useState<[number, number] | null>([47.6062, -122.3321]);
+  const [anchorLabel, setAnchorLabel] = useState<string | null>("Civic Convention Hall, Seattle");
+
+  // Assigned Vendor IDs for this event
+  const [assignedVendorIds, setAssignedVendorIds] = useState<Set<string>>(new Set());
 
   // View Mode: split (Google Maps style), map-only, list-only
   const [viewMode, setViewMode] = useState<"split" | "map" | "grid">("split");
-  // Map Engine: "streets" (zero-key Leaflet street map) vs "svg" (react-simple-maps)
-  const [mapEngine, setMapEngine] = useState<"streets" | "svg">("streets");
 
-  // Operational Suitability & Availability State
+  // Venue-specific Operational State (Preserving 100% existing functionality)
   const [availResult, setAvailResult] = useState<VenueAvailabilityResult | null>(null);
   const [checkingAvail, setCheckingAvail] = useState(false);
   const [suitResult, setSuitResult] = useState<VenueSuitabilityResult | null>(null);
   const [evaluatingSuit, setEvaluatingSuit] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [selectedVenueIdForEvent, setSelectedVenueIdForEvent] = useState<string | null>(null);
+  const [boundVenueId, setBoundVenueId] = useState<string | null>(null);
 
-  // Live Real-World Geospatial Discovery State
-  const [liveDiscovering, setLiveDiscovering] = useState(false);
-  const [liveDiscoveredCount, setLiveDiscoveredCount] = useState<number | null>(null);
+  // Notification Toast State
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const handleDiscoverLiveVenues = async (targetCity?: string) => {
-    setLiveDiscovering(true);
-    const cityToQuery = targetCity || (selectedCity !== "ALL" ? selectedCity : "Seattle");
-    try {
-      const res = await discoverVenues({
-        city: cityToQuery,
-        query: searchQuery.trim() || undefined,
-        limit: 30,
-        save_to_db: true,
-      });
-      if (res && res.items && res.items.length > 0) {
-        setVenues(res.items);
-        setSelectedVenue(res.items[0]);
-        setLiveDiscoveredCount(res.total_discovered);
-        if (targetCity) setSelectedCity(targetCity);
-      }
-    } catch (err) {
-      console.error("Live discovery failed:", err);
-    } finally {
-      setLiveDiscovering(false);
-    }
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Sync default city from event
+  // Sync event city & fetch assigned vendors on mount
   useEffect(() => {
     if (event?.location) {
       const loc = event.location.toLowerCase();
@@ -115,51 +122,170 @@ export default function VenueDiscoveryPage() {
       else if (loc.includes("mumbai")) setSelectedCity("Mumbai");
       else if (loc.includes("delhi")) setSelectedCity("Delhi");
       else if (loc.includes("bengaluru")) setSelectedCity("Bengaluru");
+      setAnchorLabel(event.location);
     }
-  }, [event]);
 
-  const fetchVenues = async () => {
+    if (eventId) {
+      getAssignmentsForEvent(eventId)
+        .then((assignments) => {
+          const ids = new Set(assignments.map((a) => a.vendor_id));
+          setAssignedVendorIds(ids);
+        })
+        .catch(() => {});
+    }
+  }, [event, eventId]);
+
+  // Handle User Geolocation for "NEAR_ME"
+  const handleSelectNearMe = () => {
+    setAnchorMode("NEAR_ME");
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+          setUserCoords(coords);
+          setAnchorCoordinates(coords);
+          setAnchorLabel("Your Device Location");
+          executeDiscovery("NEAR_ME", coords, activeDomain);
+        },
+        (err) => {
+          console.warn("Geolocation denied or unavailable:", err);
+          showToast("Device location not available. Falling back to Event Location.");
+          setAnchorMode("NEAR_EVENT");
+        },
+        { timeout: 6000 }
+      );
+    } else {
+      showToast("Geolocation not supported by your browser.");
+      setAnchorMode("NEAR_EVENT");
+    }
+  };
+
+  // Convert VenueResponse to DiscoveryMapEntity
+  const mapVenueToEntity = (v: VenueResponse): DiscoveryMapEntity => ({
+    id: v.id,
+    name: v.name,
+    entity_type: "VENUE",
+    category: "VENUE",
+    latitude: v.latitude || 0,
+    longitude: v.longitude || 0,
+    address: v.address || `${v.city}, WA`,
+    city: v.city,
+    hourly_rate: v.hourly_rate,
+    capacity: v.capacity,
+    amenities: v.amenities,
+    status: v.status,
+    is_assigned: boundVenueId === v.id,
+  });
+
+  // Convert VendorResponse to DiscoveryMapEntity
+  const mapVendorToEntity = (v: VendorResponse): DiscoveryMapEntity => ({
+    id: v.id,
+    name: v.name,
+    entity_type: "PROVIDER",
+    category: v.category,
+    latitude: v.latitude || 0,
+    longitude: v.longitude || 0,
+    address: v.address || v.city,
+    city: v.city,
+    rating: v.rating,
+    review_count: v.review_count,
+    distance_km: v.distance_km,
+    maps_url: v.maps_url,
+    phone: v.phone || v.contact_phone,
+    website: v.website,
+    hourly_rate: v.hourly_rate || v.base_cost,
+    capabilities: v.capabilities,
+    status: v.status,
+    is_assigned: assignedVendorIds.has(v.id) || v.is_assigned,
+  });
+
+  // Primary Execution: Discovers Venues or Providers based on current filters
+  const executeDiscovery = async (
+    targetAnchorMode = anchorMode,
+    customCoords = userCoords,
+    targetDomain = activeDomain
+  ) => {
     setLoading(true);
     try {
-      const res = await searchVenues({
-        city: selectedCity !== "ALL" ? selectedCity : undefined,
-        min_capacity: minCapacity || undefined,
-        venue_type: selectedCategory !== "ALL" ? selectedCategory : undefined,
-        limit: 50,
-      });
-      setVenues(res.items || []);
-      if (res.items?.length > 0 && !selectedVenue) {
-        setSelectedVenue(res.items[0]);
+      if (targetDomain === "VENUE") {
+        // Venue Discovery
+        const cityTarget = targetAnchorMode === "REGION" ? selectedCity : "Seattle";
+        const res = await discoverVenues({
+          city: cityTarget,
+          query: searchQuery.trim() || undefined,
+          limit: 30,
+          save_to_db: true,
+        });
+
+        const venueEntities = (res.items || []).map(mapVenueToEntity);
+        setPlaces(venueEntities);
+        if (venueEntities.length > 0) setSelectedPlace(venueEntities[0]);
+      } else {
+        // Provider Discovery
+        const res = await discoverProvidersForEvent(eventId, {
+          category: targetDomain,
+          query: searchQuery.trim() || undefined,
+          location: targetAnchorMode === "REGION" ? selectedCity : undefined,
+          anchor_mode: targetAnchorMode,
+          latitude: targetAnchorMode === "NEAR_ME" && customCoords ? customCoords[0] : undefined,
+          longitude: targetAnchorMode === "NEAR_ME" && customCoords ? customCoords[1] : undefined,
+          radius_km: radiusKm,
+          limit: 30,
+        });
+
+        if (res.anchor_coordinates) {
+          setAnchorCoordinates(res.anchor_coordinates);
+        }
+        if (res.anchor_label) {
+          setAnchorLabel(res.anchor_label);
+        }
+
+        const providerEntities = (res.items || []).map(mapVendorToEntity);
+        setPlaces(providerEntities);
+        if (providerEntities.length > 0) setSelectedPlace(providerEntities[0]);
       }
-    } catch (err) {
-      console.error("Venue search error:", err);
+    } catch (err: any) {
+      console.error("Discovery failed:", err);
+      showToast("Discovery network query failed. Please check network connection.");
     } finally {
       setLoading(false);
     }
   };
 
+  // Run discovery on domain, region, radius change
   useEffect(() => {
-    fetchVenues();
-  }, [selectedCity, selectedCategory, minCapacity]);
+    executeDiscovery();
+  }, [activeDomain, selectedCity, radiusKm, anchorMode]);
 
-  // Filter venues locally by search text
-  const filteredVenues = venues.filter((v) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      v.name.toLowerCase().includes(query) ||
-      (v.address && v.address.toLowerCase().includes(query)) ||
-      v.city.toLowerCase().includes(query) ||
-      v.venue_type.toLowerCase().includes(query)
-    );
-  });
+  // Handle Assign to Event
+  const handleAssignToEvent = async (place: DiscoveryMapEntity) => {
+    try {
+      await createAssignment({
+        event_id: eventId,
+        vendor_id: place.id,
+        category: place.category,
+        agreed_cost: place.hourly_rate ? place.hourly_rate * 4 : 500,
+        notes: `Assigned via EVENTRA Geospatial Discovery from ${place.city}`,
+      });
 
-  const handleSelectVenue = (venue: VenueResponse) => {
-    setSelectedVenue(venue);
-    setAvailResult(null);
-    setSuitResult(null);
+      setAssignedVendorIds((prev) => new Set([...prev, place.id]));
+
+      // Update place locally
+      setPlaces((prev) =>
+        prev.map((p) => (p.id === place.id ? { ...p, is_assigned: true } : p))
+      );
+      if (selectedPlace?.id === place.id) {
+        setSelectedPlace((prev) => (prev ? { ...prev, is_assigned: true } : null));
+      }
+
+      showToast(`✓ Assigned ${place.name} to ${event?.name || "Event"}!`);
+    } catch (err: any) {
+      console.error("Assignment failed:", err);
+      showToast(err?.message || "Failed to assign provider to event.");
+    }
   };
 
+  // Venue-specific actions
   const handleCheckAvailability = async (venueId: string) => {
     setCheckingAvail(true);
     setAvailResult(null);
@@ -194,107 +320,152 @@ export default function VenueDiscoveryPage() {
     }
   };
 
-  const handleBindVenueToEvent = (venue: VenueResponse) => {
-    setSelectedVenueIdForEvent(venue.id);
-    alert(`Venue "${venue.name}" bound as primary operational facility for ${event?.name || "this event"}!`);
+  const handleBindVenue = (place: DiscoveryMapEntity) => {
+    setBoundVenueId(place.id);
+    setPlaces((prev) =>
+      prev.map((p) => (p.id === place.id ? { ...p, is_assigned: true } : p))
+    );
+    showToast(`✓ "${place.name}" bound as primary operational venue!`);
   };
+
+  // Event requirements list (Venue, Catering, AV, Photography, Security)
+  const eventRequirements = [
+    { key: "VENUE", label: "Venue", icon: Building2 },
+    { key: "CATERING", label: "Catering", icon: Utensils },
+    { key: "AV_TECH", label: "AV & Sound", icon: Volume2 },
+    { key: "PHOTOGRAPHY", label: "Photography", icon: Camera },
+    { key: "SECURITY", label: "Security", icon: Shield },
+  ];
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] bg-[#070b12] text-slate-100 overflow-hidden font-sans">
+      {/* Toast Notification Alert */}
+      {toastMessage && (
+        <div className="fixed top-16 right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs shadow-2xl shadow-emerald-500/40 border border-emerald-300 animate-in fade-in slide-in-from-top-3 flex items-center space-x-2">
+          <Check className="w-4 h-4" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* Top Filter and Controls Bar */}
       <div className="px-4 py-3 border-b border-slate-800/90 bg-[#090d16]/95 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 shrink-0 z-30">
+        {/* Title & Live Status */}
         <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2">
-            <span className="p-1.5 rounded-lg bg-cyan-950 text-cyan-400 border border-cyan-800">
-              <Compass className="w-4 h-4" />
-            </span>
-            <div>
-              <h1 className="text-sm font-black tracking-tight text-white flex items-center space-x-2">
-                <span>Physical Venue Network & Spatial Suitability</span>
-                <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                  Interactive Map
-                </span>
-              </h1>
-            </div>
+          <div className="p-1.5 rounded-lg bg-cyan-950 text-cyan-400 border border-cyan-800">
+            <Compass className="w-4 h-4" />
+          </div>
+          <div>
+            <h1 className="text-sm font-black tracking-tight text-white flex items-center space-x-2">
+              <span>Physical Venue & Provider Network</span>
+              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-semibold">
+                Operational Radar
+              </span>
+            </h1>
           </div>
         </div>
 
-        {/* Global Controls & Filters */}
+        {/* Global Controls & Natural Language Search */}
         <div className="flex items-center space-x-2 flex-wrap">
-          {/* Search Input */}
-          <div className="relative w-64">
+          {/* Natural Language / Keyword Search Input */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              executeDiscovery();
+            }}
+            className="relative w-64 md:w-72"
+          >
             <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search real venues, landmarks..."
+              placeholder='Search e.g. "photographers near venue"...'
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition"
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition font-sans"
             />
-          </div>
+          </form>
 
-          {/* City Selector */}
-          <select
-            value={selectedCity}
-            onChange={(e) => setSelectedCity(e.target.value)}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 font-semibold focus:outline-none focus:border-cyan-500"
-          >
-            <option value="ALL">All Regions</option>
-            <option value="Seattle">Seattle, WA</option>
-            <option value="Mumbai">Mumbai, MH</option>
-            <option value="Delhi">Delhi, NCR</option>
-            <option value="Bengaluru">Bengaluru, KA</option>
-          </select>
-
-          {/* Category Selector */}
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 font-semibold focus:outline-none focus:border-cyan-500"
-          >
-            <option value="ALL">All Categories</option>
-            <option value="convention_center">Convention Centers</option>
-            <option value="conference_center">Conference Centers</option>
-            <option value="banquet_hall">Ballrooms & Halls</option>
-            <option value="studio">High-Tech Studios</option>
-            <option value="auditorium">Auditoriums</option>
-            <option value="open_ground">Open Grounds</option>
-          </select>
-
-          {/* Map Engine Selector */}
-          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1 text-xs">
+          {/* Location Anchor Mode Selector */}
+          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1 text-xs font-semibold">
             <button
-              onClick={() => setMapEngine("streets")}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                mapEngine === "streets"
+              onClick={() => {
+                setAnchorMode("NEAR_EVENT");
+                executeDiscovery("NEAR_EVENT");
+              }}
+              className={`px-2.5 py-1 rounded-lg transition flex items-center space-x-1 ${
+                anchorMode === "NEAR_EVENT"
                   ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
                   : "text-slate-400 hover:text-white"
               }`}
-              title="Real Street Level Map (100% Free, Zero API Key)"
+              title="Anchor to Event Venue / Operational Location"
             >
-              Street & Satellite Map
+              <MapPin className="w-3 h-3 text-cyan-300" />
+              <span>Near Event</span>
             </button>
+
             <button
-              onClick={() => setMapEngine("svg")}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition ${
-                mapEngine === "svg"
+              onClick={handleSelectNearMe}
+              className={`px-2.5 py-1 rounded-lg transition flex items-center space-x-1 ${
+                anchorMode === "NEAR_ME"
                   ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
                   : "text-slate-400 hover:text-white"
               }`}
-              title="react-simple-maps SVG Vector Map (Zero API Key)"
+              title="Anchor to your Browser / Device Location"
             >
-              react-simple-maps
+              <Navigation className="w-3 h-3 text-cyan-300" />
+              <span>Near Me</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setAnchorMode("REGION");
+                executeDiscovery("REGION");
+              }}
+              className={`px-2.5 py-1 rounded-lg transition flex items-center space-x-1 ${
+                anchorMode === "REGION"
+                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Anchor to Explicit Region / City"
+            >
+              <Compass className="w-3 h-3 text-cyan-300" />
+              <span>Region</span>
             </button>
           </div>
+
+          {/* Explicit Region Selector (Active when REGION selected) */}
+          {anchorMode === "REGION" && (
+            <select
+              value={selectedCity}
+              onChange={(e) => setSelectedCity(e.target.value)}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 font-semibold focus:outline-none focus:border-cyan-500 animate-in fade-in"
+            >
+              <option value="Seattle">Seattle, WA</option>
+              <option value="Mumbai">Mumbai, MH</option>
+              <option value="Delhi">Delhi, NCR</option>
+              <option value="Bengaluru">Bengaluru, KA</option>
+            </select>
+          )}
+
+          {/* Proximity / Radius Filter */}
+          <select
+            value={radiusKm || ""}
+            onChange={(e) => setRadiusKm(e.target.value ? Number(e.target.value) : undefined)}
+            className="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 font-semibold focus:outline-none focus:border-cyan-500"
+            title="Deterministic Proximity Radius"
+          >
+            <option value="">Any Radius</option>
+            <option value="5">Within 5 km</option>
+            <option value="10">Within 10 km</option>
+            <option value="25">Within 25 km</option>
+            <option value="50">Within 50 km</option>
+          </select>
 
           {/* View Mode Switcher */}
           <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1">
             <button
               onClick={() => setViewMode("split")}
               className={`p-1.5 rounded-lg text-xs transition ${
-                viewMode === "split"
-                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
-                  : "text-slate-400 hover:text-white"
+                viewMode === "split" ? "bg-cyan-600 text-white shadow-md" : "text-slate-400 hover:text-white"
               }`}
               title="Split View (Map + List)"
             >
@@ -303,9 +474,7 @@ export default function VenueDiscoveryPage() {
             <button
               onClick={() => setViewMode("map")}
               className={`p-1.5 rounded-lg text-xs transition ${
-                viewMode === "map"
-                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
-                  : "text-slate-400 hover:text-white"
+                viewMode === "map" ? "bg-cyan-600 text-white shadow-md" : "text-slate-400 hover:text-white"
               }`}
               title="Expanded Full Map"
             >
@@ -314,9 +483,7 @@ export default function VenueDiscoveryPage() {
             <button
               onClick={() => setViewMode("grid")}
               className={`p-1.5 rounded-lg text-xs transition ${
-                viewMode === "grid"
-                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
-                  : "text-slate-400 hover:text-white"
+                viewMode === "grid" ? "bg-cyan-600 text-white shadow-md" : "text-slate-400 hover:text-white"
               }`}
               title="Catalog Grid View"
             >
@@ -326,153 +493,170 @@ export default function VenueDiscoveryPage() {
         </div>
       </div>
 
-      {/* Live Geospatial Network Radar Bar */}
-      <div className="px-6 py-2.5 bg-slate-950 border-b border-slate-800/80">
-        <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-cyan-950/30 border border-emerald-500/30 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-lg shadow-emerald-950/20">
-          <div className="flex items-center space-x-3">
-            <div className="relative flex h-3 w-3 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 shadow-sm shadow-emerald-400"></span>
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                  Live Geospatial Network: Real Physical Places
-                </span>
-                <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-emerald-950/80 text-emerald-400 border border-emerald-700/60 font-semibold">
-                  Zero Mock Data
-                </span>
-                {liveDiscoveredCount !== null && (
-                  <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-cyan-950/80 text-cyan-300 border border-cyan-700/60 font-semibold">
-                    {liveDiscoveredCount} Live Places Synced
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Pulls live convention centers, theaters & halls from the OpenStreetMap global network with real coordinates & street addresses.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2 flex-wrap">
-            <div className="flex items-center space-x-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800">
-              {["Seattle", "Mumbai", "Delhi", "Bengaluru"].map((c) => (
-                <button
-                  key={c}
-                  onClick={() => handleDiscoverLiveVenues(c)}
-                  disabled={liveDiscovering}
-                  className={`px-2.5 py-1 text-xs rounded-md font-semibold transition ${
-                    selectedCity === c
-                      ? "bg-emerald-500 text-slate-950 shadow-sm shadow-emerald-500/30"
-                      : "text-slate-300 hover:text-white hover:bg-slate-800"
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={() => handleDiscoverLiveVenues()}
-              disabled={liveDiscovering}
-              className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition-all flex items-center space-x-1.5 shadow-md shadow-emerald-500/25 active:scale-95 disabled:opacity-50"
-            >
-              {liveDiscovering ? (
-                <>
-                  <span className="animate-spin inline-block w-3 h-3 border-2 border-slate-950 border-t-transparent rounded-full" />
-                  <span>Scanning Global Map Network...</span>
-                </>
-              ) : (
-                <>
-                  <Radio className="w-3.5 h-3.5 text-slate-950 animate-pulse" />
-                  <span>Fetch Live Real Places</span>
-                </>
-              )}
-            </button>
-          </div>
+      {/* KILLER FEATURE BAR: EVENT REQUIREMENTS -> RESOURCE DISCOVERY */}
+      <div className="px-4 py-2 bg-slate-950 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex items-center space-x-2">
+          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold flex items-center space-x-1">
+            <Sparkles className="w-3 h-3" />
+            <span>REQUIRED FOR THIS EVENT</span>
+          </span>
+          <span className="text-slate-400 text-[11px] hidden md:inline">
+            1-Click Discovery anchored to {anchorLabel}:
+          </span>
         </div>
+
+        <div className="flex items-center space-x-1.5 overflow-x-auto py-0.5">
+          {eventRequirements.map((req) => {
+            const Icon = req.icon;
+            const isSelected = activeDomain === req.key;
+            return (
+              <button
+                key={req.key}
+                onClick={() => {
+                  setActiveDomain(req.key);
+                  setSearchQuery("");
+                }}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 shrink-0 ${
+                  isSelected
+                    ? "bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/30 scale-105"
+                    : "bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{req.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Secondary Multi-Category Filter Bar */}
+      <div className="px-4 py-1.5 bg-[#090d16] border-b border-slate-800/60 flex items-center space-x-1 overflow-x-auto text-[11px] font-mono">
+        <span className="text-slate-500 uppercase px-2 shrink-0">ALL CATEGORIES:</span>
+        {DISCOVERY_DOMAINS.map((dom) => {
+          const Icon = dom.icon;
+          const isSelected = activeDomain === dom.key;
+          return (
+            <button
+              key={dom.key}
+              onClick={() => {
+                setActiveDomain(dom.key);
+                setSearchQuery("");
+              }}
+              className={`px-2.5 py-0.5 rounded-lg transition flex items-center space-x-1 shrink-0 ${
+                isSelected
+                  ? "bg-slate-800 text-cyan-300 font-bold border border-cyan-800/80"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+              }`}
+            >
+              <Icon className="w-3 h-3" />
+              <span>{dom.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Main Workspace Body */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Left Column: Venue Roster List (Visible in split & grid modes) */}
+        {/* Left Column: Discovered Places Roster (Visible in split & grid modes) */}
         {viewMode !== "map" && (
           <div
             className={`border-r border-slate-800/80 bg-[#070b12] flex flex-col shrink-0 overflow-hidden ${
               viewMode === "grid" ? "w-full" : "w-full md:w-[420px] lg:w-[460px]"
             }`}
           >
-            {/* List Sub-header */}
+            {/* Roster Header */}
             <div className="p-3 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/40">
               <span className="text-xs font-mono text-slate-400">
-                Found <strong className="text-white">{filteredVenues.length}</strong> real-world facilities
+                Discovered <strong className="text-white">{places.length}</strong> real-world {activeDomain.toLowerCase()} businesses
               </span>
-              <span className="text-[11px] font-mono text-cyan-400 flex items-center space-x-1">
-                <MapPin className="w-3 h-3" />
-                <span>GPS Verified</span>
+              <span className="text-[11px] font-mono text-emerald-400 flex items-center space-x-1">
+                <Radio className="w-3 h-3 animate-pulse" />
+                <span>Zero Mock Data</span>
               </span>
             </div>
 
-            {/* Scrollable Venue Cards */}
-            <div className={`flex-1 overflow-y-auto p-3 space-y-3 ${viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 space-y-0" : ""}`}>
+            {/* Scrollable Place Cards */}
+            <div
+              className={`flex-1 overflow-y-auto p-3 space-y-3 ${
+                viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 space-y-0" : ""
+              }`}
+            >
               {loading ? (
                 <div className="py-24 text-center text-xs font-mono text-slate-500">
                   <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                  Querying Spatial Venue Registry...
+                  Querying EVENTRA Geospatial Discovery Layer...
                 </div>
-              ) : filteredVenues.length > 0 ? (
-                filteredVenues.map((v) => {
-                  const isSelected = selectedVenue?.id === v.id;
-                  const isBound = selectedVenueIdForEvent === v.id;
+              ) : places.length > 0 ? (
+                places.map((place) => {
+                  const isSelected = selectedPlace?.id === place.id;
+                  const isAssigned = place.is_assigned;
 
                   return (
                     <div
-                      key={v.id}
-                      onClick={() => handleSelectVenue(v)}
+                      key={place.id}
+                      onClick={() => setSelectedPlace(place)}
                       className={`group p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between space-y-3 ${
                         isSelected
-                          ? "bg-slate-900/90 border-cyan-500 shadow-xl shadow-cyan-950/40 ring-1 ring-cyan-500/40"
+                          ? "bg-slate-900/95 border-cyan-500 shadow-xl shadow-cyan-950/40 ring-1 ring-cyan-500/40"
                           : "bg-slate-900/40 border-slate-800/80 hover:bg-slate-900/70 hover:border-slate-700"
                       }`}
                     >
-                      {/* Top Badges */}
+                      {/* Top Badges: Category & Rating */}
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-semibold border border-slate-700">
-                            {v.venue_type.replace("_", " ")}
+                            {place.category.replace("_", " ")}
                           </span>
-                          <div className="flex items-center space-x-1.5">
-                            <span className="text-xs font-bold text-amber-400 flex items-center space-x-0.5">
-                              <Star className="w-3 h-3 fill-amber-400" />
-                              <span>4.8</span>
-                            </span>
-                            <span className="text-[10px] font-mono text-emerald-400 font-semibold">
-                              {v.status}
-                            </span>
+
+                          <div className="flex items-center space-x-2">
+                            {place.rating ? (
+                              <span className="text-xs font-bold text-amber-400 flex items-center space-x-0.5 font-mono">
+                                <Star className="w-3 h-3 fill-amber-400" />
+                                <span>{place.rating.toFixed(1)}</span>
+                                {place.review_count && (
+                                  <span className="text-[10px] text-slate-400 font-normal">
+                                    ({place.review_count})
+                                  </span>
+                                )}
+                              </span>
+                            ) : null}
+
+                            {isAssigned && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold flex items-center space-x-1">
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span>ASSIGNED</span>
+                              </span>
+                            )}
                           </div>
                         </div>
 
                         {/* Title and Location */}
                         <h3 className="text-sm font-bold text-white group-hover:text-cyan-300 transition leading-snug">
-                          {v.name}
+                          {place.name}
                         </h3>
                         <p className="text-xs text-slate-400 flex items-center space-x-1">
                           <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
-                          <span className="truncate">{v.address || v.city}</span>
+                          <span className="truncate">{place.address || place.city}</span>
                         </p>
 
-                        {/* Real-world Coordinates & Google Maps Link */}
+                        {/* Distance & Google Maps Link */}
                         <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
-                          {v.latitude && v.longitude ? (
-                            <span className="text-emerald-400/90 flex items-center space-x-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
-                              <span>GPS: {v.latitude.toFixed(4)}°, {v.longitude.toFixed(4)}°</span>
+                          {place.distance_km !== null && place.distance_km !== undefined ? (
+                            <span className="text-cyan-300 font-semibold flex items-center space-x-1">
+                              <span>📍 {place.distance_km.toFixed(1)} km from Anchor</span>
                             </span>
                           ) : (
-                            <span className="text-slate-500">{v.city}</span>
+                            <span className="text-slate-500">{place.city}</span>
                           )}
+
                           <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v.name + " " + v.city)}`}
+                            href={
+                              place.maps_url ||
+                              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                place.name + " " + place.city
+                              )}`
+                            }
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
@@ -480,119 +664,142 @@ export default function VenueDiscoveryPage() {
                             title="Verify on Google Maps"
                           >
                             <span>Google Maps</span>
-                            <Compass className="w-3 h-3" />
+                            <ExternalLink className="w-3 h-3" />
                           </a>
                         </div>
                       </div>
 
-                      {/* Specs and Pricing */}
-                      <div className="pt-2.5 border-t border-slate-800/80 grid grid-cols-2 gap-2 text-xs font-mono">
-                        <div>
-                          <span className="text-slate-500 text-[10px] block">CAPACITY</span>
-                          <span className="font-semibold text-slate-200 flex items-center space-x-1">
-                            <Users className="w-3 h-3 text-slate-400" />
-                            <span>{v.capacity} Guests</span>
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-slate-500 text-[10px] block">HOURLY RATE</span>
-                          <span className="font-bold text-emerald-400">${v.hourly_rate || 0}/hr</span>
-                        </div>
-                      </div>
-
-                      {/* Amenities Pills */}
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {v.amenities.slice(0, 4).map((amenity, idx) => (
-                          <span
-                            key={idx}
-                            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 border border-slate-800 uppercase"
-                          >
-                            {amenity.replace("_", " ")}
-                          </span>
-                        ))}
-                        {v.amenities.length > 4 && (
-                          <span className="text-[9px] font-mono text-slate-500">
-                            +{v.amenities.length - 4} more
-                          </span>
+                      {/* Hourly Rate or Capacity */}
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono">
+                        {place.entity_type === "VENUE" ? (
+                          <div>
+                            <span className="text-slate-500 text-[10px] block">CAPACITY</span>
+                            <span className="font-semibold text-slate-200">{place.capacity || 300} Guests</span>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="text-slate-500 text-[10px] block">ESTIMATED RATE</span>
+                            <span className="font-bold text-emerald-400">
+                              {place.hourly_rate ? `$${Math.round(place.hourly_rate)}/hr` : "Custom Quote"}
+                            </span>
+                          </div>
                         )}
-                      </div>
 
-                      {/* Action Bar */}
-                      <div className="pt-2 border-t border-slate-800/60 flex items-center space-x-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCheckAvailability(v.id);
-                          }}
-                          className="flex-1 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center space-x-1 transition"
-                        >
-                          <Clock className="w-3 h-3 text-amber-400" />
-                          <span>Window</span>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCheckSuitability(v.id);
-                          }}
-                          className="flex-1 py-1.5 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 text-xs font-semibold flex items-center justify-center space-x-1 transition"
-                        >
-                          <Sparkles className="w-3 h-3" />
-                          <span>Suitability</span>
-                        </button>
+                        {/* Primary Action Button: Assign to Event */}
+                        <div>
+                          {place.entity_type === "PROVIDER" ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAssignToEvent(place);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1 shadow-md ${
+                                isAssigned
+                                  ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800 hover:bg-emerald-900"
+                                  : "bg-cyan-600 hover:bg-cyan-500 text-slate-950 shadow-cyan-600/30 active:scale-95"
+                              }`}
+                            >
+                              {isAssigned ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>✓ Assigned</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-3.5 h-3.5 text-slate-950 font-black" />
+                                  <span>Assign to Event</span>
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <div className="flex items-center space-x-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCheckAvailability(place.id);
+                                }}
+                                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                              >
+                                Window
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCheckSuitability(place.id);
+                                }}
+                                className="px-2 py-1 rounded-lg bg-cyan-600/30 hover:bg-cyan-600/40 text-cyan-300 text-xs font-semibold"
+                              >
+                                Suitability
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleBindVenue(place);
+                                }}
+                                className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
+                              >
+                                Bind
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
                 })
               ) : (
-                <div className="py-24 text-center text-xs font-mono text-slate-500">
-                  No venues found matching your criteria. Try adjusting the search or region filter.
+                <div className="py-24 text-center text-xs font-mono text-slate-500 space-y-2">
+                  <p>No places found matching your search criteria in this radius.</p>
+                  <button
+                    onClick={() => {
+                      setRadiusKm(undefined);
+                      setSearchQuery("");
+                      executeDiscovery();
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-900/50 hover:bg-cyan-800/60 text-cyan-300 text-xs font-bold transition"
+                  >
+                    Expand Search Radius
+                  </button>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* Right Column: Full Interactive Map Canvas (Visible in split & map modes) */}
+        {/* Right Column: Interactive Discovery Map */}
         {viewMode !== "grid" && (
           <div className="flex-1 h-full min-h-0 relative p-3">
-            {mapEngine === "streets" ? (
-              <VenueMap
-                venues={filteredVenues}
-                selectedVenue={selectedVenue}
-                onSelectVenue={handleSelectVenue}
-                eventCity={selectedCity !== "ALL" ? selectedCity : (event?.location || undefined)}
-                onCheckAvailability={handleCheckAvailability}
-                onCheckSuitability={handleCheckSuitability}
-                className="h-full w-full"
-              />
-            ) : (
-              <SimpleSvgMap
-                venues={filteredVenues}
-                selectedVenue={selectedVenue}
-                onSelectVenue={handleSelectVenue}
-                eventCity={selectedCity !== "ALL" ? selectedCity : (event?.location || undefined)}
-                className="h-full w-full"
-              />
-            )}
+            <DiscoveryMap
+              places={places}
+              selectedPlace={selectedPlace}
+              onSelectPlace={(p) => setSelectedPlace(p)}
+              anchorCoordinates={anchorCoordinates}
+              anchorLabel={anchorLabel}
+              eventCity={selectedCity}
+              className="h-full w-full"
+              onAssignToEvent={handleAssignToEvent}
+              onCheckAvailability={handleCheckAvailability}
+              onCheckSuitability={handleCheckSuitability}
+              onBindVenue={handleBindVenue}
+            />
           </div>
         )}
       </div>
 
-      {/* Operational Inspection & Verification Modal / Drawer */}
-      {inspectorOpen && selectedVenue && (
+      {/* Venue Operational Inspection Modal */}
+      {inspectorOpen && selectedPlace && selectedPlace.entity_type === "VENUE" && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="max-w-xl w-full rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]">
-            {/* Modal Header */}
             <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
               <div className="flex items-center space-x-3">
                 <div className="p-2 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800">
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">{selectedVenue.name}</h3>
+                  <h3 className="text-base font-bold text-white">{selectedPlace.name}</h3>
                   <p className="text-xs text-slate-400 flex items-center space-x-1">
                     <MapPin className="w-3 h-3 text-slate-500" />
-                    <span>{selectedVenue.address || selectedVenue.city}</span>
+                    <span>{selectedPlace.address}</span>
                   </p>
                 </div>
               </div>
@@ -604,46 +811,37 @@ export default function VenueDiscoveryPage() {
               </button>
             </div>
 
-            {/* Modal Content */}
             <div className="p-5 overflow-y-auto space-y-5 text-xs font-sans">
-              {/* Quick Facility Overview */}
               <div className="grid grid-cols-3 gap-3 p-3.5 rounded-xl bg-slate-950 border border-slate-800 font-mono">
                 <div>
-                  <span className="text-slate-500 text-[10px] block">MAX CAPACITY</span>
-                  <span className="text-sm font-bold text-white">{selectedVenue.capacity}</span>
+                  <span className="text-slate-500 text-[10px] block">CAPACITY</span>
+                  <span className="text-sm font-bold text-white">{selectedPlace.capacity || 300}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 text-[10px] block">BASE RATE</span>
-                  <span className="text-sm font-bold text-emerald-400">${selectedVenue.hourly_rate}/hr</span>
+                  <span className="text-slate-500 text-[10px] block">RATE</span>
+                  <span className="text-sm font-bold text-emerald-400">${selectedPlace.hourly_rate || 500}/hr</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 text-[10px] block">GEO COORDINATES</span>
+                  <span className="text-slate-500 text-[10px] block">COORDINATES</span>
                   <span className="text-xs font-bold text-slate-300">
-                    {selectedVenue.latitude?.toFixed(4)}, {selectedVenue.longitude?.toFixed(4)}
+                    {selectedPlace.latitude?.toFixed(4)}, {selectedPlace.longitude?.toFixed(4)}
                   </span>
                 </div>
               </div>
 
-              {/* Suitability Evaluation Section */}
+              {/* Suitability Scorecard */}
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Deterministic Suitability Scorecard</span>
-                  </h4>
-                  {evaluatingSuit && (
-                    <span className="text-cyan-400 font-mono text-[10px] animate-pulse">Evaluating...</span>
-                  )}
-                </div>
+                <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Suitability Scorecard</span>
+                </h4>
 
                 {suitResult ? (
                   <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/70 space-y-3">
                     <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                       <div>
-                        <span className="text-[10px] font-mono text-slate-400 uppercase">Overall Suitability</span>
-                        <div className="text-2xl font-black text-cyan-400">
-                          {suitResult.score}%
-                        </div>
+                        <span className="text-[10px] font-mono text-slate-400 uppercase">Match Score</span>
+                        <div className="text-2xl font-black text-cyan-400">{suitResult.score}%</div>
                       </div>
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-mono font-bold border ${
@@ -659,72 +857,41 @@ export default function VenueDiscoveryPage() {
                     <div className="grid grid-cols-3 gap-2 text-center font-mono">
                       <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
                         <span className="text-[10px] text-slate-400 block">CAPACITY</span>
-                        <span
-                          className={`font-bold ${
-                            suitResult.capacity_match ? "text-emerald-400" : "text-rose-400"
-                          }`}
-                        >
+                        <span className={suitResult.capacity_match ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
                           {suitResult.capacity_match ? "PASSED" : "FAILED"}
                         </span>
                       </div>
                       <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
                         <span className="text-[10px] text-slate-400 block">AMENITIES</span>
-                        <span
-                          className={`font-bold ${
-                            suitResult.amenity_match ? "text-emerald-400" : "text-rose-400"
-                          }`}
-                        >
+                        <span className={suitResult.amenity_match ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
                           {suitResult.amenity_match ? "PASSED" : "FAILED"}
                         </span>
                       </div>
                       <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
                         <span className="text-[10px] text-slate-400 block">BUDGET</span>
-                        <span
-                          className={`font-bold ${
-                            suitResult.budget_match ? "text-emerald-400" : "text-rose-400"
-                          }`}
-                        >
+                        <span className={suitResult.budget_match ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
                           {suitResult.budget_match ? "PASSED" : "FAILED"}
                         </span>
                       </div>
                     </div>
-
-                    {suitResult.reasons?.length > 0 && (
-                      <div className="space-y-1 pt-1">
-                        <span className="text-[10px] font-mono text-slate-400 uppercase">Engine Findings:</span>
-                        <ul className="space-y-1">
-                          {suitResult.reasons.map((r, idx) => (
-                            <li key={idx} className="text-slate-300 flex items-start space-x-1.5">
-                              <span className="text-cyan-400">•</span>
-                              <span>{r}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <button
-                    onClick={() => handleCheckSuitability(selectedVenue.id)}
+                    onClick={() => handleCheckSuitability(selectedPlace.id)}
                     className="w-full py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold flex items-center justify-center space-x-2 transition"
                   >
                     <Sparkles className="w-4 h-4 text-cyan-400" />
-                    <span>Run Suitability Check against Guest Count ({event?.guest_count || 300})</span>
+                    <span>Run Suitability Check</span>
                   </button>
                 )}
               </div>
 
-              {/* Availability Window Verification */}
+              {/* Availability Window */}
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
-                    <Clock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Live Availability Window Check</span>
-                  </h4>
-                  {checkingAvail && (
-                    <span className="text-amber-400 font-mono text-[10px] animate-pulse">Checking database...</span>
-                  )}
-                </div>
+                <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center space-x-1.5">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Availability Window</span>
+                </h4>
 
                 {availResult ? (
                   <div
@@ -742,21 +909,14 @@ export default function VenueDiscoveryPage() {
                       )}
                       <div>
                         <div className="font-bold">
-                          {availResult.is_available
-                            ? "Venue Available for Scheduled Operating Window"
-                            : "Booking Conflict Detected"}
+                          {availResult.is_available ? "Venue Available for Window" : "Booking Conflict Detected"}
                         </div>
-                        <p className="text-[11px] opacity-80">
-                          {availResult.is_available
-                            ? "No overlapping events registered during requested timeslot."
-                            : "Venue is already booked by another reservation in this window."}
-                        </p>
                       </div>
                     </div>
                   </div>
                 ) : (
                   <button
-                    onClick={() => handleCheckAvailability(selectedVenue.id)}
+                    onClick={() => handleCheckAvailability(selectedPlace.id)}
                     className="w-full py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 font-semibold flex items-center justify-center space-x-2 transition"
                   >
                     <Clock className="w-4 h-4 text-amber-400" />
@@ -766,7 +926,6 @@ export default function VenueDiscoveryPage() {
               </div>
             </div>
 
-            {/* Modal Footer: Bind Action */}
             <div className="p-4 border-t border-slate-800 bg-slate-950/90 flex items-center justify-between">
               <button
                 onClick={() => setInspectorOpen(false)}
@@ -776,7 +935,7 @@ export default function VenueDiscoveryPage() {
               </button>
               <button
                 onClick={() => {
-                  handleBindVenueToEvent(selectedVenue);
+                  handleBindVenue(selectedPlace);
                   setInspectorOpen(false);
                 }}
                 className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs flex items-center space-x-2 shadow-lg shadow-cyan-600/40 transition"

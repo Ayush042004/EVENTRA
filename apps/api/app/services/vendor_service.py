@@ -3,6 +3,7 @@
 Coordinates discovery, filtering, availability checks, category validation,
 and assignment representations for providers/vendors.
 """
+import math
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -34,6 +35,19 @@ from app.services.provider_classifier import ProviderClassifier
 from app.services.deduplication import ProviderDeduplicator
 from app.integrations.google_maps_scraper.models import NormalizedProvider
 from app.integrations.google_maps_scraper.queries import build_discovery_query
+
+
+def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculates great-circle distance between two GPS coordinates in kilometers."""
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return round(R * c, 2)
 
 
 class VendorService:
@@ -306,14 +320,13 @@ class VendorService:
         event_id: Optional[str] = None,
     ) -> Tuple[List[Vendor], int, int, str, List[str]]:
         """Discovers providers from Google Maps, normalizes, classifies into EVENTRA taxonomy,
-
         deduplicates against the existing database, and persists the results.
         Returns: (saved_vendors, total_created, total_updated, source, queries_used)
         """
         adapter = registry.get_google_maps_scraper()
 
         category = (request.category or "OTHER").strip().upper()
-        city = (request.location or "Noida").strip()
+        city = (request.location or "Seattle").strip()
 
         keywords = build_discovery_query(
             category=category,
@@ -338,13 +351,18 @@ class VendorService:
         created_count = 0
         updated_count = 0
 
+        # Pre-fetch assigned vendor IDs if event_id is available
+        assigned_vendor_ids = set()
+        if event_id:
+            assigned_vendor_ids = {a.vendor_id for a in self.get_assignments_for_event(event_id)}
+
         for item in raw_list:
             if isinstance(item, dict):
                 norm_p = NormalizedProvider(**item)
             else:
                 norm_p = item
 
-            # Classify into EVENTRA's controlled taxonomy
+            # Classify into EVENTRA's controlled taxonomy strictly based on evidence
             classification = ProviderClassifier.classify(
                 name=norm_p.name,
                 raw_category=norm_p.raw_category or norm_p.category,
@@ -353,23 +371,58 @@ class VendorService:
                 website=norm_p.website,
             )
 
-            # Assign controlled taxonomy and detected capabilities
-            # If discovery explicitly requested a specific valid category, retain or assign it
-            if category != "OTHER" and classification.category == "OTHER":
-                norm_p.category = category
-            else:
-                norm_p.category = classification.category
-
+            # Preserve raw category from discovery source and set evidence-based controlled category
+            norm_p.raw_category = norm_p.raw_category or norm_p.category
+            norm_p.category = classification.category
             norm_p.capabilities = classification.capabilities
             norm_p.classification_confidence = classification.confidence
             norm_p.classification_reason = classification.reason
 
-            vendor, is_new = deduplicator.upsert_provider(norm_p)
+            # STRICT CLASSIFICATION RULE:
+            # Requested category is a filter/intent, NEVER evidence.
+            # If the provider does not match the requested category, strictly exclude it.
+            if category != "OTHER" and norm_p.category != category:
+                continue
+
+            vendor, is_new = deduplicator.upsert_provider(norm_p, commit=False)
+
+            # Set assignment status
+            vendor.is_assigned = (vendor.id in assigned_vendor_ids)
+
+            # Calculate distance from request coordinates if provided
+            if (
+                request.latitude is not None
+                and request.longitude is not None
+                and vendor.latitude is not None
+                and vendor.longitude is not None
+            ):
+                vendor.distance_km = haversine_distance_km(
+                    request.latitude, request.longitude, vendor.latitude, vendor.longitude
+                )
+            else:
+                vendor.distance_km = None
+
+            # Apply radius filtering if specified
+            if request.radius_km is not None and vendor.distance_km is not None:
+                if vendor.distance_km > request.radius_km:
+                    continue  # Filter out providers outside requested radius
+
             saved_vendors.append(vendor)
             if is_new:
                 created_count += 1
             else:
                 updated_count += 1
+
+        # Single batch commit for all upserted providers (prevents remote DB latency bottleneck)
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+
+        # Sort by distance if available (closest first)
+        saved_vendors.sort(
+            key=lambda v: getattr(v, "distance_km", None) if getattr(v, "distance_km", None) is not None else 99999.0
+        )
 
         return saved_vendors, created_count, updated_count, source_label, keywords
 
@@ -377,38 +430,126 @@ class VendorService:
         self,
         event_id: str,
         request: ProviderDiscoveryRequest,
-    ) -> Tuple[List[Vendor], int, int, str, List[str]]:
-        """Context-aware provider discovery using the event's venue, location, and requirement."""
+    ) -> Tuple[List[Vendor], int, int, str, List[str], Optional[Tuple[float, float]], Optional[str], str]:
+        """Context-aware provider discovery using the event's venue, location, and requirement.
+
+        Supports:
+        - Natural language search parsing ("photographers near venue", "wedding caterers within 10km")
+        - 3-tier Location Resolution:
+            1. REGION / Explicit Location: geocoded via existing adapter to obtain coordinates
+            2. NEAR_ME: browser/user GPS coordinates
+            3. NEAR_EVENT (Default): event venue coordinates or geocoded event location
+        - Deterministic Haversine distance calculation and radius filtering
+        - Real source rating and review counts
+        - Event assignment status
+        """
         event = self.db.query(Event).filter(Event.id == event_id).first()
         if not event:
             raise ValueError(f"Event with id '{event_id}' not found")
 
-        # Enrich location / coordinates from event location or venue if available
-        location = request.location
-        lat = request.latitude
-        lon = request.longitude
+        from app.integrations.google_maps_scraper.queries import parse_discovery_query
+        from app.services.geospatial_service import geospatial_discovery
 
-        if not location and getattr(event, "location", None):
-            location = event.location
+        # 1. Natural Language Query Parsing
+        parsed = {}
+        if request.query and request.query.strip():
+            parsed = parse_discovery_query(request.query)
 
-        if getattr(event, "venue_id", None):
-            venue = self.db.query(Venue).filter(Venue.id == event.venue_id).first()
-            if venue:
-                if not location:
-                    location = venue.city or venue.address
-                if lat is None and venue.latitude is not None:
-                    lat = venue.latitude
-                if lon is None and venue.longitude is not None:
-                    lon = venue.longitude
+        category = (request.category or parsed.get("category") or "OTHER").strip().upper()
+        radius_km = request.radius_km or parsed.get("radius_km")
+        parsed_anchor = parsed.get("anchor_mode")
+        custom_loc = request.location or parsed.get("location")
+        clean_query = parsed.get("clean_query") if parsed.get("clean_query") else request.query
+
+        # Determine anchor mode (explicit REGION takes precedence if custom_loc provided)
+        if custom_loc and (not request.anchor_mode or request.anchor_mode == "NEAR_EVENT" or parsed_anchor == "REGION"):
+            anchor_mode = "REGION"
+        else:
+            anchor_mode = (request.anchor_mode or parsed_anchor or "NEAR_EVENT").strip().upper()
+
+        # 2. Location Anchor Resolution
+        anchor_lat: Optional[float] = None
+        anchor_lon: Optional[float] = None
+        anchor_label: Optional[str] = None
+        search_city: str = "Seattle"
+
+        if (anchor_mode == "REGION" or custom_loc) and custom_loc:
+            # Explicit location takes top priority: geocode via existing geocoding adapter
+            search_city = geospatial_discovery.clean_city_name(custom_loc)
+            anchor_lat, anchor_lon = geospatial_discovery.resolve_city_center(search_city)
+            anchor_label = search_city
+
+        elif anchor_mode == "NEAR_ME" and request.latitude is not None and request.longitude is not None:
+            # Device/Browser coordinates
+            anchor_lat = request.latitude
+            anchor_lon = request.longitude
+            anchor_label = "Your Location"
+            base_loc = getattr(event, "location", "Seattle") or "Seattle"
+            search_city = geospatial_discovery.clean_city_name(base_loc)
+
+        else:
+            # Default / NEAR_EVENT: Event Venue coordinates or Event Location
+            venue = None
+            if getattr(event, "venue_id", None):
+                venue = self.db.query(Venue).filter(Venue.id == event.venue_id).first()
+
+            if venue and venue.latitude is not None and venue.longitude is not None:
+                anchor_lat = venue.latitude
+                anchor_lon = venue.longitude
+                anchor_label = f"Venue: {venue.name}"
+                search_city = venue.city or "Seattle"
+            elif getattr(event, "location", None):
+                search_city = geospatial_discovery.clean_city_name(event.location)
+                anchor_lat, anchor_lon = geospatial_discovery.resolve_city_center(search_city)
+                anchor_label = event.location
+            elif request.latitude is not None and request.longitude is not None:
+                anchor_lat = request.latitude
+                anchor_lon = request.longitude
+                anchor_label = "Event Location"
+                search_city = "Seattle"
+            else:
+                search_city = "Seattle"
+                anchor_lat, anchor_lon = geospatial_discovery.resolve_city_center("Seattle")
+                anchor_label = "Seattle, WA"
+
+        search_city = geospatial_discovery.clean_city_name(search_city)
 
         enriched_request = ProviderDiscoveryRequest(
-            category=request.category,
-            query=request.query,
-            location=location or "Noida",
-            latitude=lat,
-            longitude=lon,
+            category=category,
+            query=clean_query,
+            location=search_city,
+            latitude=anchor_lat,
+            longitude=anchor_lon,
+            radius_km=radius_km,
+            anchor_mode=anchor_mode,
             limit=request.limit,
             use_real_scraper=request.use_real_scraper,
         )
 
-        return self.discover_providers(enriched_request, event_id=event_id)
+        vendors, created, updated, source, queries = self.discover_providers(enriched_request, event_id=event_id)
+
+        # 3. Post-Process Distance Calculation, Radius Filtering & Assignment Status
+        assigned_vendor_ids = {a.vendor_id for a in self.get_assignments_for_event(event_id)}
+
+        processed_vendors: List[Vendor] = []
+        for v in vendors:
+            v.is_assigned = (v.id in assigned_vendor_ids)
+
+            if anchor_lat is not None and anchor_lon is not None and v.latitude is not None and v.longitude is not None:
+                v.distance_km = haversine_distance_km(anchor_lat, anchor_lon, v.latitude, v.longitude)
+            else:
+                v.distance_km = None
+
+            if radius_km is not None and v.distance_km is not None:
+                if v.distance_km > radius_km:
+                    continue
+
+            processed_vendors.append(v)
+
+        processed_vendors.sort(
+            key=lambda item: getattr(item, "distance_km", None) if getattr(item, "distance_km", None) is not None else 99999.0
+        )
+
+        anchor_coords = (anchor_lat, anchor_lon) if (anchor_lat is not None and anchor_lon is not None) else None
+        return processed_vendors, created, updated, source, queries, anchor_coords, anchor_label, anchor_mode
+

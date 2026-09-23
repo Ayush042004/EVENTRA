@@ -50,9 +50,14 @@ class GoogleMapsScraperAdapter(ProviderDirectoryProvider):
     ) -> IntegrationResult[List[Dict[str, Any]]]:
         """Queries Google Maps through scraper API, normalizes, and returns provider dictionaries."""
         start_time = time.time()
-        city_target = city or "Noida"
-        lat = latitude if latitude is not None else 28.5355  # Noida default
-        lon = longitude if longitude is not None else 77.3910
+        city_target = city or "Seattle"
+
+        from app.services.geospatial_service import geospatial_discovery
+        city_target = geospatial_discovery.clean_city_name(city_target)
+        if latitude is None or longitude is None:
+            lat, lon = geospatial_discovery.resolve_city_center(city_target)
+        else:
+            lat, lon = latitude, longitude
 
         keywords = build_discovery_query(
             category=category,

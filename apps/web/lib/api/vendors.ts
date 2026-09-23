@@ -70,3 +70,41 @@ export async function validateCategoryForDomain(
     params: { domain, category },
   });
 }
+
+export interface ProviderDiscoveryParams {
+  category?: string;
+  location?: string;
+  query?: string;
+  latitude?: number;
+  longitude?: number;
+  radius_km?: number;
+  anchor_mode?: "NEAR_EVENT" | "NEAR_ME" | "REGION";
+  limit?: number;
+}
+
+export interface ProviderDiscoveryResponse {
+  event_id?: string;
+  total_discovered: number;
+  total_created: number;
+  total_updated: number;
+  source: string;
+  query_used: string[];
+  anchor_coordinates?: [number, number] | null;
+  anchor_label?: string | null;
+  items: VendorResponse[];
+}
+
+export async function discoverProviders(
+  payload: ProviderDiscoveryParams = {}
+): Promise<ProviderDiscoveryResponse> {
+  return apiClient.post<ProviderDiscoveryResponse>("/vendors/discover", payload);
+}
+
+export async function discoverProvidersForEvent(
+  eventId: string,
+  payload: ProviderDiscoveryParams = {}
+): Promise<ProviderDiscoveryResponse> {
+  return apiClient.post<ProviderDiscoveryResponse>(`/events/${eventId}/providers/discover`, payload);
+}
+
+

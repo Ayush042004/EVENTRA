@@ -36,18 +36,35 @@ CITY_COORDINATES: Dict[str, Tuple[float, float]] = {
 class GeospatialDiscoveryService:
     """Discovers real-world venues and providers dynamically from the global map network."""
 
-    def __init__(self, timeout_seconds: int = 7):
+    def __init__(self, timeout_seconds: int = 4):
         self.timeout = timeout_seconds
         self.headers = {
             "User-Agent": "EVENTRA-LiveMapRadar/1.0 (contact@eventra.internal)",
             "Accept": "application/json",
         }
 
+    def clean_city_name(self, city: str) -> str:
+        """Extracts recognizable canonical city name from address or qualified location."""
+        if not city:
+            return "Seattle"
+        city_lower = city.strip().lower()
+        for c_name in CITY_COORDINATES:
+            if c_name in city_lower:
+                return c_name.title()
+        parts = [p.strip() for p in city.split(",") if p.strip()]
+        if len(parts) >= 2:
+            return parts[-1]
+        return city.strip()
+
     def resolve_city_center(self, city: str) -> Tuple[float, float]:
         """Resolves city center coordinates from local registry or live geocoding."""
         city_lower = city.strip().lower()
         if city_lower in CITY_COORDINATES:
             return CITY_COORDINATES[city_lower]
+
+        for c_name, c_coords in CITY_COORDINATES.items():
+            if c_name in city_lower:
+                return c_coords
 
         # Live lookup via Nominatim
         try:
@@ -63,8 +80,8 @@ class GeospatialDiscoveryService:
         except Exception as exc:
             logger.warning(f"Failed to geocode city '{city}': {exc}")
 
-        # Default fallback (Noida coordinates if completely unresolved)
-        return (28.5355, 77.3910)
+        # Default fallback (Seattle coordinates if completely unresolved)
+        return (47.6062, -122.3321)
 
     def discover_real_venues(
         self,
@@ -75,6 +92,7 @@ class GeospatialDiscoveryService:
         limit: int = 25,
     ) -> List[Dict[str, Any]]:
         """Discovers real-world physical event spaces, convention centers, and halls."""
+        city = self.clean_city_name(city)
         if latitude is None or longitude is None:
             lat, lon = self.resolve_city_center(city)
         else:
@@ -180,6 +198,7 @@ class GeospatialDiscoveryService:
         limit: int = 20,
     ) -> List[Dict[str, Any]]:
         """Discovers real-world companies and professionals (catering, AV, photography, decor, florists)."""
+        city = self.clean_city_name(city)
         if latitude is None or longitude is None:
             lat, lon = self.resolve_city_center(city)
         else:
@@ -187,28 +206,52 @@ class GeospatialDiscoveryService:
 
         cat_clean = category.strip().upper()
         cat_term = cat_clean.lower().replace("_", " ")
+        from app.integrations.google_maps_scraper.queries import CATEGORY_SEARCH_QUERIES
 
-        search_queries = [query.strip() if query and query.strip() else f"{cat_term} {city}"]
-        if not query:
-            search_queries.extend([
-                f"{cat_term} services {city}",
-                f"{cat_term} company {city}",
-                f"event {cat_term} {city}",
-            ])
+        # Build targeted queries using canonical high-precision keywords
+        clean_q = query.strip() if query and query.strip() else ""
+        if clean_q:
+            primary = f"{clean_q} {city}" if city.lower() not in clean_q.lower() else clean_q
+            search_queries = [primary]
+        else:
+            cat_keywords = CATEGORY_SEARCH_QUERIES.get(cat_clean, [f"{cat_term} services"])
+            search_queries = [f"{kw} {city}" for kw in cat_keywords[:2]]
 
         discovered = []
         seen = set()
 
+        import math
+
         for s_query in search_queries:
-            if len(discovered) >= limit:
+            if len(discovered) >= limit or len(discovered) >= 6:
                 break
-            items = self._query_photon(s_query, lat=lat, lon=lon, limit=10)
+            items = self._query_photon(s_query, lat=lat, lon=lon, limit=15)
             for it in items:
                 props = it.get("properties", {})
                 coords = it.get("geometry", {}).get("coordinates", [0, 0])
                 name = props.get("name")
                 if not name or len(name.strip()) < 3:
                     continue
+
+                osm_key = (props.get("osm_key") or "").lower()
+                osm_val = (props.get("osm_value") or "").lower()
+
+                # Filter out streets, highways, administrative boundaries, natural features, etc.
+                if osm_key in ("highway", "boundary", "place", "waterway", "railway", "natural", "landuse", "barrier"):
+                    continue
+
+                # Filter out pure transit stops or non-business objects
+                if osm_val in ("bus_stop", "tram_stop", "station", "subway_entrance", "platform", "roof", "track", "traffic_signals"):
+                    continue
+
+                # Filter out places too far from the anchor city (e.g. out of state/country)
+                if coords and coords[0] != 0 and coords[1] != 0:
+                    d_lat = math.radians(coords[1] - lat)
+                    d_lon = math.radians(coords[0] - lon)
+                    a = math.sin(d_lat / 2) ** 2 + math.cos(math.radians(lat)) * math.cos(math.radians(coords[1])) * math.sin(d_lon / 2) ** 2
+                    dist_km = 6371.0 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+                    if dist_km > 75.0:
+                        continue
 
                 clean_name = name.strip()
                 if clean_name.lower() in seen:
@@ -220,27 +263,30 @@ class GeospatialDiscoveryService:
 
                 addr = f"{housenumber} {street}, {item_city}".strip(", ") if street else f"Commercial District, {city}"
 
+                osm_id_val = props.get("osm_id") or abs(hash(f"{clean_name}_{city}")) % 10000000
+                raw_cat_detected = osm_val or props.get("type") or osm_key or "commercial"
+
                 provider_dict = {
                     "source": "LIVE_OPENSTREETMAP_NETWORK",
-                    "source_id": f"osm_live_{props.get('osm_id', int(time.time() * 1000))}",
+                    "source_id": f"osm_live_{osm_id_val}",
                     "name": clean_name,
-                    "category": cat_clean,
-                    "raw_category": props.get("osm_value") or cat_term,
+                    "category": "OTHER",
+                    "raw_category": raw_cat_detected,
                     "address": addr,
                     "city": city,
                     "latitude": round(coords[1], 6),
                     "longitude": round(coords[0], 6),
-                    "phone": props.get("phone") or "+1-800-EVENTRA",
-                    "email": f"contact@{clean_name.lower().replace(' ', '')[:15]}.example.com",
-                    "website": f"https://www.google.com/search?q={urllib.parse.quote(clean_name + ' ' + city)}",
-                    "rating": 4.7,
-                    "review_count": 68,
-                    "maps_url": f"https://www.google.com/maps/search/?api=1&query={coords[1]},{coords[0]}",
-                    "description": f"Verified local {cat_term} specialist serving corporate events, galas, and conferences in {city}.",
-                    "base_cost": 2500.0,
-                    "capabilities": [f"full_service_{cat_term.replace(' ', '_')}", "on_site_management", "verified_staff"],
-                    "classification_confidence": 0.95,
-                    "classification_reason": "Live OpenStreetMap and business directory verified physical establishment.",
+                    "phone": props.get("phone"),
+                    "email": None,
+                    "website": props.get("website") or f"https://www.google.com/search?q={urllib.parse.quote(clean_name + ' ' + city)}",
+                    "rating": None,
+                    "review_count": None,
+                    "maps_url": f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(clean_name + ' ' + city)}",
+                    "description": props.get("description") or f"Verified physical business in {city}.",
+                    "base_cost": None,
+                    "capabilities": [],
+                    "classification_confidence": 0.0,
+                    "classification_reason": "Live OpenStreetMap physical entity; pending classifier evaluation.",
                     "raw_data": props,
                 }
 

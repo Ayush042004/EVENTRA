@@ -56,6 +56,8 @@ class VendorResponse(VendorBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    distance_km: Optional[float] = None
+    is_assigned: Optional[bool] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -63,11 +65,13 @@ class VendorResponse(VendorBase):
 class ProviderDiscoveryRequest(BaseModel):
     """Payload to discover providers from Google Maps."""
     category: Optional[str] = Field(None, description="EVENTRA category (e.g. CATERING, DECOR, DJ_MUSIC)")
-    query: Optional[str] = Field(None, description="Custom search keywords (e.g. 'wedding caterers')")
-    location: Optional[str] = Field(None, description="City or specific location string (e.g. 'Noida')")
+    query: Optional[str] = Field(None, description="Custom search keywords or natural query (e.g. 'wedding caterers within 10km')")
+    location: Optional[str] = Field(None, description="City or specific location string (e.g. 'Seattle')")
     latitude: Optional[float] = Field(None, description="Optional geocoded latitude")
     longitude: Optional[float] = Field(None, description="Optional geocoded longitude")
-    limit: int = Field(default=20, ge=1, le=100, description="Max providers to discover")
+    radius_km: Optional[float] = Field(None, description="Search radius in kilometers for deterministic proximity filtering")
+    anchor_mode: Optional[str] = Field(None, description="Location anchor mode: 'NEAR_EVENT', 'NEAR_ME', 'REGION'")
+    limit: int = Field(default=25, ge=1, le=100, description="Max providers to discover")
     use_real_scraper: bool = Field(default=True, description="Attempt real scraping if scraper service alive")
 
 
@@ -79,6 +83,9 @@ class ProviderDiscoveryResponse(BaseModel):
     total_updated: int
     source: str
     query_used: List[str]
+    anchor_coordinates: Optional[List[float]] = None
+    anchor_label: Optional[str] = None
+    anchor_mode: Optional[str] = None
     items: List[VendorResponse]
 
 

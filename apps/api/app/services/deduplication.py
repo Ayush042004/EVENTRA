@@ -90,9 +90,10 @@ class ProviderDeduplicator:
                 if match:
                     return match
 
-        # Tier 3: Normalized website domain
+        # Tier 3: Normalized website domain (ignoring generic engines & directories)
+        GENERIC_DOMAINS = {"google.com", "maps.google.com", "instagram.com", "facebook.com", "yelp.com", "example.com"}
         prov_domain = self._extract_domain(provider.website)
-        if prov_domain and len(prov_domain) > 4:
+        if prov_domain and len(prov_domain) > 4 and prov_domain not in GENERIC_DOMAINS:
             candidates = (
                 self.db.query(Vendor)
                 .filter(Vendor.website.isnot(None))
@@ -100,11 +101,12 @@ class ProviderDeduplicator:
             )
             for cand in candidates:
                 cand_domain = self._extract_domain(cand.website)
-                if cand_domain and cand_domain == prov_domain:
+                if cand_domain and cand_domain not in GENERIC_DOMAINS and cand_domain == prov_domain:
                     return cand
 
-        # Tier 4: Contact phone number
-        if provider.phone and len(provider.phone) >= 8:
+        # Tier 4: Contact phone number (ignoring generic toll-free/dummy numbers)
+        GENERIC_PHONES = {"+1-800-eventra", "+1800eventra", "0000000000", "1234567890"}
+        if provider.phone and len(provider.phone) >= 8 and provider.phone.strip().lower() not in GENERIC_PHONES:
             match = (
                 self.db.query(Vendor)
                 .filter(Vendor.contact_phone == provider.phone)
@@ -133,13 +135,13 @@ class ProviderDeduplicator:
     def upsert_provider(
         self,
         provider: NormalizedProvider,
+        commit: bool = True,
     ) -> Tuple[Vendor, bool]:
         """Upserts a normalized provider. Returns (vendor_record, is_new)."""
         existing = self.find_match(provider)
 
         cat_upper = provider.category.strip().upper()
-        default_cost = DEFAULT_CATEGORY_BASE_COSTS.get(cat_upper, 2000.0)
-        base_cost = provider.base_cost or default_cost
+        base_cost = provider.base_cost  # Sourced from legitimate provider data only; None if unavailable
 
         if existing:
             # Enrich existing record
@@ -157,9 +159,9 @@ class ProviderDeduplicator:
                 existing.contact_phone = provider.phone
             if not existing.contact_email and provider.email:
                 existing.contact_email = provider.email
-            if provider.rating:
+            if provider.rating is not None:
                 existing.rating = provider.rating
-            if provider.review_count:
+            if provider.review_count is not None:
                 existing.review_count = provider.review_count
             if provider.raw_category and not existing.raw_category:
                 existing.raw_category = provider.raw_category
@@ -172,11 +174,12 @@ class ProviderDeduplicator:
                     existing.classification_confidence or 0.0,
                     provider.classification_confidence,
                 )
-            if existing.base_cost is None:
-                existing.base_cost = base_cost
+            if provider.base_cost is not None:
+                existing.base_cost = provider.base_cost
 
-            self.db.commit()
-            self.db.refresh(existing)
+            if commit:
+                self.db.commit()
+                self.db.refresh(existing)
             return existing, False
 
         # Create new vendor
@@ -204,6 +207,7 @@ class ProviderDeduplicator:
             classification_confidence=provider.classification_confidence or 0.85,
         )
         self.db.add(new_vendor)
-        self.db.commit()
-        self.db.refresh(new_vendor)
+        if commit:
+            self.db.commit()
+            self.db.refresh(new_vendor)
         return new_vendor, True

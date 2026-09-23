@@ -32,7 +32,7 @@ class GoogleMapsScraperClient:
     def is_available(self) -> bool:
         """Checks if the scraper API service is alive and reachable."""
         try:
-            with httpx.Client(timeout=3.0) as client:
+            with httpx.Client(timeout=0.3) as client:
                 resp = client.get(f"{self.base_url}/api/v1/jobs")
                 return resp.status_code == 200
         except Exception:
