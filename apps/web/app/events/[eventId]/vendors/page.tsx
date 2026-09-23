@@ -109,8 +109,9 @@ export default function EventVendorsPage() {
 
     setSendingMsg(true);
     try {
-      const res = await sendProviderMessage(eventId, activeMessagingVendor.id, newMessage);
-      setMessages((prev) => [...prev, res]);
+      await sendProviderMessage(eventId, activeMessagingVendor.id, newMessage);
+      const res = await getProviderMessages(eventId, activeMessagingVendor.id);
+      setMessages(res.items || []);
       setNewMessage("");
     } catch (err: any) {
       alert(`Dispatch failed: ${err?.message}`);
