@@ -43,6 +43,29 @@ class VendorStatus(str, Enum):
     UNAVAILABLE = "UNAVAILABLE"
 
 
+class ProviderCategory(str, Enum):
+    """Controlled taxonomy for EVENTRA providers/vendors."""
+    VENUE = "VENUE"
+    CATERING = "CATERING"
+    DECOR = "DECOR"
+    PHOTOGRAPHY = "PHOTOGRAPHY"
+    VIDEOGRAPHY = "VIDEOGRAPHY"
+    DJ_MUSIC = "DJ_MUSIC"
+    LIGHTING = "LIGHTING"
+    AV_TECH = "AV_TECH"
+    ENTERTAINMENT = "ENTERTAINMENT"
+    TRANSPORT = "TRANSPORT"
+    SECURITY = "SECURITY"
+    STAFFING = "STAFFING"
+    MAKEUP_STYLING = "MAKEUP_STYLING"
+    PRINTING = "PRINTING"
+    RENTALS = "RENTALS"
+    FLORIST = "FLORIST"
+    PRODUCTION = "PRODUCTION"
+    CLEANING = "CLEANING"
+    OTHER = "OTHER"
+
+
 class RequirementType(str, Enum):
     VENUE = "VENUE"
     CATERING = "CATERING"

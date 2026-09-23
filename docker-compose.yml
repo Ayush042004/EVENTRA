@@ -18,6 +18,13 @@ services:
       timeout: 5s
       retries: 5
 
+  google-maps-scraper:
+    image: gosom/google-maps-scraper:latest
+    container_name: eventra-google-maps-scraper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+
   api:
     build:
       context: ./apps/api
@@ -32,6 +39,7 @@ services:
       - ENVIRONMENT=development
       - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
       - LLM_API_KEY=${LLM_API_KEY}
+      - GOOGLE_MAPS_SCRAPER_URL=${GOOGLE_MAPS_SCRAPER_URL:-http://google-maps-scraper:8080}
     ports:
       - "8000:8000"
     volumes:

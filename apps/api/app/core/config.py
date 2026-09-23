@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     LLM_API_KEY: Union[str, None] = None
     LLM_TIMEOUT_SECONDS: int = 30
 
+    # Phase 13: Google Maps Scraper Integration
+    GOOGLE_MAPS_SCRAPER_URL: str = "http://localhost:8080"
+    GOOGLE_MAPS_SCRAPER_TIMEOUT: int = 45
+    GOOGLE_MAPS_SCRAPER_MAX_DEPTH: int = 5
+    GOOGLE_MAPS_SCRAPER_FALLBACK_TO_MOCK: bool = True
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
