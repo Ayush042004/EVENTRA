@@ -36,7 +36,18 @@ const VenueMap = dynamic(() => import("../../../../components/maps/VenueMap"), {
   loading: () => (
     <div className="w-full h-full min-h-[500px] flex flex-col items-center justify-center bg-[#090d16] text-slate-400 font-mono text-xs border border-slate-800 rounded-2xl">
       <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-      <span>Loading Interactive Google Maps Engine...</span>
+      <span>Loading Interactive Map Engine (Zero API Key)...</span>
+    </div>
+  ),
+});
+
+// Dynamically import react-simple-maps component
+const SimpleSvgMap = dynamic(() => import("../../../../components/maps/SimpleSvgMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full min-h-[500px] flex flex-col items-center justify-center bg-[#090d16] text-slate-400 font-mono text-xs border border-slate-800 rounded-2xl">
+      <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+      <span>Loading react-simple-maps Engine...</span>
     </div>
   ),
 });
@@ -57,6 +68,8 @@ export default function VenueDiscoveryPage() {
 
   // View Mode: split (Google Maps style), map-only, list-only
   const [viewMode, setViewMode] = useState<"split" | "map" | "grid">("split");
+  // Map Engine: "streets" (zero-key Leaflet street map) vs "svg" (react-simple-maps)
+  const [mapEngine, setMapEngine] = useState<"streets" | "svg">("streets");
 
   // Operational Suitability & Availability State
   const [availResult, setAvailResult] = useState<VenueAvailabilityResult | null>(null);
@@ -219,6 +232,32 @@ export default function VenueDiscoveryPage() {
             <option value="auditorium">Auditoriums</option>
             <option value="open_ground">Open Grounds</option>
           </select>
+
+          {/* Map Engine Selector */}
+          <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1 text-xs">
+            <button
+              onClick={() => setMapEngine("streets")}
+              className={`px-2.5 py-1 rounded-lg font-semibold transition ${
+                mapEngine === "streets"
+                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Real Street Level Map (100% Free, Zero API Key)"
+            >
+              Street & Satellite Map
+            </button>
+            <button
+              onClick={() => setMapEngine("svg")}
+              className={`px-2.5 py-1 rounded-lg font-semibold transition ${
+                mapEngine === "svg"
+                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-900/40"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="react-simple-maps SVG Vector Map (Zero API Key)"
+            >
+              react-simple-maps
+            </button>
+          </div>
 
           {/* View Mode Switcher */}
           <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 space-x-1">
@@ -395,18 +434,28 @@ export default function VenueDiscoveryPage() {
           </div>
         )}
 
-        {/* Right Column: Full Interactive Google Maps Canvas (Visible in split & map modes) */}
+        {/* Right Column: Full Interactive Map Canvas (Visible in split & map modes) */}
         {viewMode !== "grid" && (
           <div className="flex-1 h-full min-h-0 relative p-3">
-            <VenueMap
-              venues={filteredVenues}
-              selectedVenue={selectedVenue}
-              onSelectVenue={handleSelectVenue}
-              eventCity={selectedCity !== "ALL" ? selectedCity : (event?.location || undefined)}
-              onCheckAvailability={handleCheckAvailability}
-              onCheckSuitability={handleCheckSuitability}
-              className="h-full w-full"
-            />
+            {mapEngine === "streets" ? (
+              <VenueMap
+                venues={filteredVenues}
+                selectedVenue={selectedVenue}
+                onSelectVenue={handleSelectVenue}
+                eventCity={selectedCity !== "ALL" ? selectedCity : (event?.location || undefined)}
+                onCheckAvailability={handleCheckAvailability}
+                onCheckSuitability={handleCheckSuitability}
+                className="h-full w-full"
+              />
+            ) : (
+              <SimpleSvgMap
+                venues={filteredVenues}
+                selectedVenue={selectedVenue}
+                onSelectVenue={handleSelectVenue}
+                eventCity={selectedCity !== "ALL" ? selectedCity : (event?.location || undefined)}
+                className="h-full w-full"
+              />
+            )}
           </div>
         )}
       </div>
