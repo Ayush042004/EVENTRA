@@ -7,12 +7,18 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db_session, get_current_user_id
 from app.services.event_service import EventService
 from app.services.collaboration_service import CollaborationService
+from app.services.vendor_service import VendorService
 from app.services.specification_service import (
     SpecificationService,
     SpecificationValidationError,
 )
 from app.schemas.event import EventCreate, EventResponse
 from app.schemas.event_member import EventMemberCreate, EventMemberUpdate, EventMemberResponse
+from app.schemas.vendor import (
+    ProviderDiscoveryRequest,
+    ProviderDiscoveryResponse,
+    VendorResponse,
+)
 from app.schemas.specification import (
     EventSpecification,
     EventSpecificationPreviewRequest,
@@ -183,3 +189,31 @@ def remove_event_member(
     service = CollaborationService(db)
     service.remove_member(event_id, member_id, current_user_id=current_user_id)
     return None
+
+
+@router.post("/{event_id}/providers/discover", response_model=ProviderDiscoveryResponse, status_code=status.HTTP_200_OK)
+def discover_providers_for_event(
+    event_id: str,
+    discovery_in: ProviderDiscoveryRequest,
+    db: Session = Depends(get_db_session),
+    current_user_id: str = Depends(get_current_user_id),
+):
+    """Context-aware provider discovery for an event using event location, venue, and requirement."""
+    service = VendorService(db)
+    try:
+        vendors, created, updated, source, queries = service.discover_providers_for_event(
+            event_id=event_id,
+            request=discovery_in,
+        )
+    except ValueError as exc:
+        raise NotFoundException(str(exc))
+
+    return ProviderDiscoveryResponse(
+        event_id=event_id,
+        total_discovered=len(vendors),
+        total_created=created,
+        total_updated=updated,
+        source=source,
+        query_used=queries,
+        items=[VendorResponse.model_validate(v) for v in vendors],
+    )

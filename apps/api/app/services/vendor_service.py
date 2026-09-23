@@ -11,6 +11,8 @@ from sqlalchemy import func
 from app.models.vendor import Vendor
 from app.models.provider_availability import ProviderAvailability
 from app.models.vendor_assignment import VendorAssignment
+from app.models.event import Event
+from app.models.venue import Venue
 from app.domains.registry import (
     is_provider_category_compatible,
     get_domain_provider_categories,
@@ -25,7 +27,13 @@ from app.schemas.vendor import (
     VendorAssignmentCreate,
     VendorAssignmentUpdate,
     CategoryValidationResult,
+    ProviderDiscoveryRequest,
 )
+from app.integrations.registry import registry
+from app.services.provider_classifier import ProviderClassifier
+from app.services.deduplication import ProviderDeduplicator
+from app.integrations.google_maps_scraper.models import NormalizedProvider
+from app.integrations.google_maps_scraper.queries import build_discovery_query
 
 
 class VendorService:
@@ -38,14 +46,26 @@ class VendorService:
         """Creates a new provider record."""
         vendor = Vendor(
             name=vendor_in.name.strip(),
-            category=vendor_in.category.strip().lower(),
+            category=vendor_in.category.strip(),
             city=vendor_in.city.strip(),
+            address=vendor_in.address.strip() if vendor_in.address else None,
+            latitude=vendor_in.latitude,
+            longitude=vendor_in.longitude,
             contact_name=vendor_in.contact_name.strip() if vendor_in.contact_name else None,
             contact_email=vendor_in.contact_email.strip() if vendor_in.contact_email else None,
             contact_phone=vendor_in.contact_phone.strip() if vendor_in.contact_phone else None,
+            website=vendor_in.website.strip() if vendor_in.website else None,
+            maps_url=vendor_in.maps_url.strip() if vendor_in.maps_url else None,
             base_cost=vendor_in.base_cost,
+            rating=vendor_in.rating,
+            review_count=vendor_in.review_count,
             service_description=vendor_in.service_description.strip() if vendor_in.service_description else None,
             status=vendor_in.status.strip().upper(),
+            source=vendor_in.source.strip().upper() if vendor_in.source else "INTERNAL",
+            source_id=vendor_in.source_id.strip() if vendor_in.source_id else None,
+            raw_category=vendor_in.raw_category.strip() if vendor_in.raw_category else None,
+            capabilities=vendor_in.capabilities or [],
+            classification_confidence=vendor_in.classification_confidence,
         )
         self.db.add(vendor)
         self.db.commit()
@@ -279,3 +299,116 @@ class VendorService:
             .order_by(VendorAssignment.created_at.asc(), VendorAssignment.id.asc())
             .all()
         )
+
+    def discover_providers(
+        self,
+        request: ProviderDiscoveryRequest,
+        event_id: Optional[str] = None,
+    ) -> Tuple[List[Vendor], int, int, str, List[str]]:
+        """Discovers providers from Google Maps, normalizes, classifies into EVENTRA taxonomy,
+
+        deduplicates against the existing database, and persists the results.
+        Returns: (saved_vendors, total_created, total_updated, source, queries_used)
+        """
+        adapter = registry.get_google_maps_scraper()
+
+        category = (request.category or "OTHER").strip().upper()
+        city = (request.location or "Noida").strip()
+
+        keywords = build_discovery_query(
+            category=category,
+            custom_query=request.query,
+            location=city,
+        )
+
+        res = adapter.search_providers(
+            category=category,
+            city=city,
+            query=request.query,
+            latitude=request.latitude,
+            longitude=request.longitude,
+            limit=request.limit,
+        )
+
+        raw_list = res.data or []
+        source_label = res.source.value if hasattr(res.source, "value") else str(res.source)
+
+        deduplicator = ProviderDeduplicator(self.db)
+        saved_vendors: List[Vendor] = []
+        created_count = 0
+        updated_count = 0
+
+        for item in raw_list:
+            if isinstance(item, dict):
+                norm_p = NormalizedProvider(**item)
+            else:
+                norm_p = item
+
+            # Classify into EVENTRA's controlled taxonomy
+            classification = ProviderClassifier.classify(
+                name=norm_p.name,
+                raw_category=norm_p.raw_category or norm_p.category,
+                description=norm_p.description,
+                city=norm_p.city,
+                website=norm_p.website,
+            )
+
+            # Assign controlled taxonomy and detected capabilities
+            # If discovery explicitly requested a specific valid category, retain or assign it
+            if category != "OTHER" and classification.category == "OTHER":
+                norm_p.category = category
+            else:
+                norm_p.category = classification.category
+
+            norm_p.capabilities = classification.capabilities
+            norm_p.classification_confidence = classification.confidence
+            norm_p.classification_reason = classification.reason
+
+            vendor, is_new = deduplicator.upsert_provider(norm_p)
+            saved_vendors.append(vendor)
+            if is_new:
+                created_count += 1
+            else:
+                updated_count += 1
+
+        return saved_vendors, created_count, updated_count, source_label, keywords
+
+    def discover_providers_for_event(
+        self,
+        event_id: str,
+        request: ProviderDiscoveryRequest,
+    ) -> Tuple[List[Vendor], int, int, str, List[str]]:
+        """Context-aware provider discovery using the event's venue, location, and requirement."""
+        event = self.db.query(Event).filter(Event.id == event_id).first()
+        if not event:
+            raise ValueError(f"Event with id '{event_id}' not found")
+
+        # Enrich location / coordinates from event location or venue if available
+        location = request.location
+        lat = request.latitude
+        lon = request.longitude
+
+        if not location and getattr(event, "location", None):
+            location = event.location
+
+        if getattr(event, "venue_id", None):
+            venue = self.db.query(Venue).filter(Venue.id == event.venue_id).first()
+            if venue:
+                if not location:
+                    location = venue.city or venue.address
+                if lat is None and venue.latitude is not None:
+                    lat = venue.latitude
+                if lon is None and venue.longitude is not None:
+                    lon = venue.longitude
+
+        enriched_request = ProviderDiscoveryRequest(
+            category=request.category,
+            query=request.query,
+            location=location or "Noida",
+            latitude=lat,
+            longitude=lon,
+            limit=request.limit,
+            use_real_scraper=request.use_real_scraper,
+        )
+
+        return self.discover_providers(enriched_request, event_id=event_id)
