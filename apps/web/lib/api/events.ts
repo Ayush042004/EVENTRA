@@ -37,3 +37,36 @@ export async function getEventSpecification(
 export async function getEventMembers(eventId: string): Promise<any[]> {
   return apiClient.get<any[]>(`/events/${eventId}/members`);
 }
+
+export async function processEventIntake(payload: {
+  message: string;
+  event_id?: string;
+  force_plan?: boolean;
+}): Promise<any> {
+  return apiClient.post<any>("/events/intake", payload);
+}
+
+export async function modifyEventPlan(
+  eventId: string,
+  payload: { modification: string }
+): Promise<any> {
+  return apiClient.post<any>(`/events/${eventId}/modify-plan`, payload);
+}
+
+export async function startAutonomousOperations(eventId: string): Promise<any> {
+  return apiClient.post<any>(`/events/${eventId}/start-operations`);
+}
+
+export async function getEventOperationsStatus(eventId: string): Promise<any> {
+  return apiClient.get<any>(`/events/${eventId}/operations/status`);
+}
+
+export async function simulateCancellationIncident(eventId: string): Promise<any> {
+  return apiClient.post<any>(`/events/${eventId}/incidents/simulate-cancellation`);
+}
+
+export async function approveRecoveryAction(eventId: string, approvalId: string): Promise<any> {
+  return apiClient.post<any>(`/events/${eventId}/recovery/approve`, { approval_id: approvalId });
+}
+
+

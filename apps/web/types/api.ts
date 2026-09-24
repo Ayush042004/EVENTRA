@@ -825,6 +825,8 @@ export interface AgentRunResponse {
   execution?: Record<string, unknown> | null;
   verification?: Record<string, unknown> | null;
   decision_trace?: Record<string, unknown> | null;
+  operational_intent?: string | null;
+  provider_operation?: Record<string, unknown> | null;
   error?: string | null;
   step_count?: number | null;
 }

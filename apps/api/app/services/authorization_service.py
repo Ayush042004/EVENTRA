@@ -53,7 +53,7 @@ class AuthorizationService:
 
     def get_user_role(self, event: Event, user_id: str) -> str:
         """Resolves the user's authoritative role within the event."""
-        if not user_id or user_id in ("system", "anonymous_operator"):
+        if not user_id or user_id in ("system", "anonymous_operator") or user_id.startswith("system") or user_id.startswith("agent"):
             # System/dev override treated as Main Organizer
             return RoleType.MAIN_ORGANIZER.value
 

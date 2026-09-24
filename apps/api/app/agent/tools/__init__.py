@@ -29,6 +29,8 @@ __all__ = [
     "execute_action",
     "verify_action",
     "get_decision_trace",
+    "start_autonomous_operations",
+    "modify_event_plan",
     "contact_provider",
     "negotiate_with_provider",
     "request_provider_approval",
@@ -36,6 +38,11 @@ __all__ = [
     "simulate_provider_response",
     "get_provider_negotiation_history",
 ]
+
+from app.agent.tools.operations_tools import (
+    start_autonomous_operations,
+    modify_event_plan,
+)
 
 from app.agent.tools.communication_tools import (
     contact_provider,

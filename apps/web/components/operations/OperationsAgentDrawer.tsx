@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bot,
@@ -16,8 +16,12 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronRight,
+  MessageSquare,
+  Radio,
 } from "lucide-react";
 import { runOperationsAgent } from "../../lib/api/agent";
+import { getOpenWAStatus, OpenWAStatus } from "../../lib/api/negotiation";
+import { ProviderCommunicationPanel } from "../../features/provider-communication";
 import type { AgentRunResponse } from "../../types/api";
 
 interface OperationsAgentDrawerProps {
@@ -37,10 +41,20 @@ export function OperationsAgentDrawer({
   const [result, setResult] = useState<AgentRunResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showTrace, setShowTrace] = useState(false);
+  const [openwaStatus, setOpenwaStatus] = useState<OpenWAStatus | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      getOpenWAStatus()
+        .then((s) => setOpenwaStatus(s))
+        .catch(() => setOpenwaStatus(null));
+    }
+  }, [isOpen]);
 
   const quickPrompts = [
     "Assess active vendor risk and generate contingency alternatives",
-    "Evaluate schedule slack and identify critical bottlenecks",
+    "Engage and negotiate with providers for pending service requirements",
+    "Review provider WhatsApp quotations and counter-offer within budget ceiling",
     "Audit budget ceiling compliance and flag cost overruns",
   ];
 
@@ -80,9 +94,19 @@ export function OperationsAgentDrawer({
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   Autonomous Loop
                 </span>
+                {openwaStatus?.enabled && openwaStatus?.session?.connected ? (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    OpenWA Live
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-400 border border-slate-500/20">
+                    Simulation Mode
+                  </span>
+                )}
               </h3>
               <p className="text-[11px] text-muted-foreground">
-                Synthesizes impact analysis, risk scoring, recovery plans & governance
+                Synthesizes impact analysis, risk scoring, recovery plans & provider negotiation
               </p>
             </div>
           </div>
@@ -216,7 +240,40 @@ export function OperationsAgentDrawer({
                     </div>
                   </div>
                 )}
+
+                {result.provider_operation && (
+                  <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 space-y-1 col-span-2">
+                    <div className="flex items-center justify-between font-bold text-emerald-300 text-[11px]">
+                      <div className="flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        Provider Operations Dispatch
+                      </div>
+                      <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                        {(result.provider_operation as any).negotiation_status || "DISPATCHED"}
+                      </span>
+                    </div>
+                    <div className="text-foreground font-medium">
+                      {(result.provider_operation as any).vendor_name || (result.provider_operation as any).message || "Provider operation active"}
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Inline Provider Communication Panel */}
+              {(result.provider_operation as any)?.assignment_id && (
+                <div className="pt-2">
+                  <div className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider mb-2 flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                    Live Provider WhatsApp Thread:
+                  </div>
+                  <ProviderCommunicationPanel
+                    assignmentId={(result.provider_operation as any).assignment_id}
+                    eventId={eventId}
+                    compact={true}
+                    onRefresh={() => handleExecute("Check latest provider status")}
+                  />
+                </div>
+              )}
 
               {/* Quick Jump Buttons */}
               <div className="flex flex-wrap gap-2 pt-2">

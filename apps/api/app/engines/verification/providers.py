@@ -38,7 +38,13 @@ class ProviderVerifier:
             or (context.recovery_option.proposed_changes.get("vendor_id") if context.recovery_option and context.recovery_option.proposed_changes else None)
         )
 
-        for assign in assignments:
+        relevant_assignments = (
+            [a for a in assignments if a.vendor_id == target_vendor_id]
+            if (is_vendor_action and target_vendor_id)
+            else assignments
+        )
+
+        for assign in relevant_assignments:
             vendor = providers_by_id.get(assign.vendor_id)
             if not vendor:
                 violations.append(f"Assignment references unknown vendor '{assign.vendor_id}'.")

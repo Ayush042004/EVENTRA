@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.models.event import Event
 from app.models.task import Task
 from app.models.budget import BudgetItem
+from app.models.vendor_assignment import VendorAssignment
+from app.models.vendor import Vendor
 from app.models.state_transition import StateTransition
 from app.models.enums import EventLifecycleState, TaskStatus
 from app.engines.state.event_state import EventStateMachine
@@ -21,6 +23,7 @@ from app.schemas.live_state import (
     TaskProgress,
     ScheduleDeviationResponse,
     BudgetDeviationResponse,
+    ProviderOperationalSummary,
 )
 from app.core.exceptions import NotFoundException, BadRequestException
 
@@ -215,6 +218,9 @@ class LiveStateService:
                 is_over_budget=bd.is_over_budget,
             )
 
+        # Provider Operational Summary
+        provider_summary = self.get_provider_live_state(event_id)
+
         return EventLiveState(
             event_id=event_id,
             event_name=event.name,
@@ -227,6 +233,58 @@ class LiveStateService:
             task_progress=task_progress,
             schedule_deviations=sched_dev_responses,
             budget_deviation=budget_dev,
+            provider_summary=provider_summary,
+        )
+
+    def get_provider_live_state(self, event_id: str) -> ProviderOperationalSummary:
+        """Aggregates active provider engagements, confirmations, and commitments for live context."""
+        assignments = (
+            self.db.query(VendorAssignment)
+            .filter(VendorAssignment.event_id == event_id)
+            .all()
+        )
+        confirmed_count = sum(
+            1 for a in assignments if a.negotiation_status == "CONFIRMED" or a.status == "CONFIRMED"
+        )
+        awaiting_approval_count = sum(
+            1 for a in assignments if a.negotiation_status == "AWAITING_APPROVAL"
+        )
+        in_negotiation_count = sum(
+            1
+            for a in assignments
+            if a.negotiation_status
+            in ("CONTACTED", "QUOTATION_RECEIVED", "NEGOTIATING", "COUNTER_OFFER_SENT")
+        )
+        total_committed_cost = sum(
+            float(a.agreed_cost or a.quoted_amount or 0)
+            for a in assignments
+            if a.negotiation_status == "CONFIRMED" or a.status == "CONFIRMED"
+        )
+
+        assignment_items = []
+        for a in assignments:
+            vendor = a.vendor
+            assignment_items.append({
+                "assignment_id": a.id,
+                "vendor_id": a.vendor_id,
+                "vendor_name": vendor.name if vendor else "Unknown",
+                "category": a.category,
+                "status": a.status,
+                "negotiation_status": a.negotiation_status,
+                "quoted_amount": a.quoted_amount,
+                "agreed_cost": a.agreed_cost,
+                "currency": a.currency or "INR",
+                "approval_id": a.approval_id,
+                "is_simulation": a.is_simulation,
+            })
+
+        return ProviderOperationalSummary(
+            total_assignments=len(assignments),
+            confirmed_count=confirmed_count,
+            in_negotiation_count=in_negotiation_count,
+            awaiting_approval_count=awaiting_approval_count,
+            total_committed_cost=total_committed_cost,
+            assignments=assignment_items,
         )
 
     def conclude_event(self, event_id: str, reason: str = "Event concluded") -> Event:

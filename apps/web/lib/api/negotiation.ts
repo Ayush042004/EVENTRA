@@ -101,3 +101,40 @@ export async function getNegotiationConversation(
     `/vendors/assignments/${assignmentId}/conversation`
   );
 }
+
+export interface OpenWAStatus {
+  enabled: boolean;
+  session_id?: string | null;
+  base_url?: string | null;
+  health?: {
+    configured: boolean;
+    enabled: boolean;
+    status: string;
+    base_url?: string;
+    error?: string;
+  };
+  session?: {
+    session_id?: string | null;
+    status: string;
+    connected?: boolean;
+    error?: string;
+  };
+  mode?: string;
+  message?: string;
+}
+
+export interface ProviderMessageItem {
+  id: string;
+  sender?: string;
+  recipient_contact?: string;
+  message: string;
+  direction: "INBOUND" | "OUTBOUND";
+  channel: "WHATSAPP" | "WHATSAPP_OPENWA" | "DEMO_SIMULATION" | "MOCK" | string;
+  status?: string;
+  timestamp?: number;
+  is_simulation?: boolean;
+}
+
+export async function getOpenWAStatus(): Promise<OpenWAStatus> {
+  return apiClient.get<OpenWAStatus>("/integrations/openwa/status");
+}

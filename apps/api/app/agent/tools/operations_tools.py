@@ -366,3 +366,27 @@ def get_decision_trace(
         return dt_service.get_trace_by_verification_id(event_id, verification_id)
     traces = dt_service.get_traces_for_event(event_id, limit=1)
     return traces[0] if traces else None
+
+
+def start_autonomous_operations(
+    db: Session,
+    event_id: str,
+    user_id: str = "anonymous_operator",
+) -> Dict[str, Any]:
+    """Executes full autonomous sourcing, provider engagement, and live transition."""
+    from app.services.autonomous_operations_service import AutonomousOperationsService
+    service = AutonomousOperationsService(db)
+    return service.start_operations(event_id=event_id, user_id=user_id)
+
+
+def modify_event_plan(
+    db: Session,
+    event_id: str,
+    modification: str,
+    user_id: str = "anonymous_operator",
+) -> Dict[str, Any]:
+    """Modifies event requirements/parameters and regenerates operational plan."""
+    from app.services.intake_service import IntakeService
+    service = IntakeService(db)
+    return service.modify_plan(event_id=event_id, modification_text=modification, user_id=user_id)
+

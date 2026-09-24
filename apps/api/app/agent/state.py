@@ -32,6 +32,10 @@ class AgentState(TypedDict, total=False):
     verification_result: Optional[Dict[str, Any]]
     decision_trace: Optional[Dict[str, Any]]
     
+    # Provider Operations (communication, negotiation, confirmation)
+    operational_intent: Optional[str]  # INCIDENT_RECOVERY, PROVIDER_CONTACT, PROVIDER_NEGOTIATION, etc.
+    provider_operation_result: Optional[Dict[str, Any]]
+    
     # LangGraph navigation & communication
     messages: List[Dict[str, Any]]
     next_action: Optional[str]
@@ -39,3 +43,4 @@ class AgentState(TypedDict, total=False):
     step_count: int
     final_response: Optional[str]
     error: Optional[str]
+

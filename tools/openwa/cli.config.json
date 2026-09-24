@@ -1,0 +1,12 @@
+{
+  "port": 2785,
+  "key": "eventra_openwa_key_2026",
+  "webhook": "http://127.0.0.1:8000/api/webhooks/openwa",
+  "sessionId": "eventra_ops",
+  "multiDevice": true,
+  "headless": false,
+  "useChrome": true,
+  "qrTimeout": 0,
+  "authTimeout": 0,
+  "skipUpdateCheck": true
+}

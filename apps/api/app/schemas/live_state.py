@@ -1,6 +1,6 @@
 """Pydantic Schemas: Live State Engine Output"""
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -39,6 +39,16 @@ class BudgetDeviationResponse(BaseModel):
     is_over_budget: bool = False
 
 
+class ProviderOperationalSummary(BaseModel):
+    """Live provider operations summary."""
+    total_assignments: int = 0
+    confirmed_count: int = 0
+    in_negotiation_count: int = 0
+    awaiting_approval_count: int = 0
+    total_committed_cost: float = 0.0
+    assignments: List[Dict[str, Any]] = []
+
+
 class EventLiveState(BaseModel):
     """Complete live operational state snapshot for an event."""
     event_id: str
@@ -52,6 +62,7 @@ class EventLiveState(BaseModel):
     task_progress: List[TaskProgress] = []
     schedule_deviations: List[ScheduleDeviationResponse] = []
     budget_deviation: Optional[BudgetDeviationResponse] = None
+    provider_summary: Optional[ProviderOperationalSummary] = None
 
 
 class GoLiveRequest(BaseModel):

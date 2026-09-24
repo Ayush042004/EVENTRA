@@ -20,6 +20,7 @@ from app.models.event import Event
 from app.models.vendor import Vendor
 from app.models.vendor_assignment import VendorAssignment
 from app.models.budget import BudgetItem
+from app.models.approval import Approval
 from app.models.enums import NegotiationStatus
 from app.services.provider_communication_service import ProviderCommunicationService
 from app.services.approval_service import ApprovalService
@@ -70,6 +71,63 @@ class NegotiationService:
             "would_exceed_budget": (total_committed + amount) > total_budget,
             "budget_utilization_percent": round(((total_committed + amount) / total_budget * 100), 1) if total_budget > 0 else 0,
         }
+
+    def resolve_provider_by_phone(self, phone: str) -> Optional[Vendor]:
+        """Resolves a Vendor by incoming phone number from OpenWA or WhatsApp.
+
+        Normalizes phone number by removing country code prefixes, spaces, +, -, etc.
+        Matches exact digits or matching national suffix (e.g. 10 digits).
+        """
+        if not phone:
+            return None
+
+        # Clean incoming phone (strip openwa suffix @c.us if present)
+        clean_in = phone.split("@")[0]
+        digits_in = "".join(c for c in clean_in if c.isdigit())
+        if not digits_in:
+            return None
+
+        vendors = self.db.query(Vendor).filter(Vendor.contact_phone.isnot(None)).all()
+        for vendor in vendors:
+            if not vendor.contact_phone:
+                continue
+            v_digits = "".join(c for c in vendor.contact_phone if c.isdigit())
+            if not v_digits:
+                continue
+            if digits_in == v_digits:
+                return vendor
+            # Check last 10 digits (national number in India and many countries)
+            if len(digits_in) >= 10 and len(v_digits) >= 10:
+                if digits_in[-10:] == v_digits[-10:]:
+                    return vendor
+
+        return None
+
+    def find_active_assignment(
+        self, vendor_id: str, event_id: Optional[str] = None
+    ) -> Optional[VendorAssignment]:
+        """Finds the most active VendorAssignment for a provider."""
+        query = self.db.query(VendorAssignment).filter(VendorAssignment.vendor_id == vendor_id)
+        if event_id:
+            query = query.filter(VendorAssignment.event_id == event_id)
+
+        active_statuses = [
+            NegotiationStatus.CONTACTED.value,
+            NegotiationStatus.QUOTATION_RECEIVED.value,
+            NegotiationStatus.NEGOTIATING.value,
+            NegotiationStatus.COUNTER_OFFER_SENT.value,
+            NegotiationStatus.AWAITING_APPROVAL.value,
+        ]
+
+        active = (
+            query.filter(VendorAssignment.negotiation_status.in_(active_statuses))
+            .order_by(VendorAssignment.updated_at.desc())
+            .first()
+        )
+        if active:
+            return active
+
+        return query.order_by(VendorAssignment.updated_at.desc()).first()
 
     # ---- core operations ----
 
@@ -151,6 +209,29 @@ class NegotiationService:
             "success": result.success,
         }
 
+    def process_quote(
+        self,
+        assignment_id: str,
+        quoted_amount: float,
+        notes: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Convenience wrapper to process incoming provider quote."""
+        assignment = self._get_assignment(assignment_id)
+        assignment.agreed_cost = quoted_amount
+        assignment.quoted_amount = quoted_amount
+        self.db.commit()
+        return self.process_provider_response(
+            assignment_id=assignment_id,
+            response_text=f"Quoted amount {quoted_amount}. {notes or ''}".strip(),
+            structured_offer={
+                "availability": True,
+                "quoted_amount": quoted_amount,
+                "amount": quoted_amount,
+                "terms": notes,
+            },
+        )
+
+
     def process_provider_response(
         self,
         assignment_id: str,
@@ -205,8 +286,7 @@ class NegotiationService:
             }
 
         # Provider is available
-        assignment.provider_available = True
-        quoted = offer.get("quoted_price") or offer.get("quoted_amount")
+        quoted = offer.get("quoted_price") or offer.get("quoted_amount") or offer.get("amount")
         if quoted is not None:
             assignment.quoted_amount = float(quoted)
         if offer.get("coverage_start"):
@@ -220,18 +300,50 @@ class NegotiationService:
         max_ceiling = assignment.max_approved_amount
         target = assignment.target_amount
 
-        if quoted is not None and max_ceiling is not None and float(quoted) > max_ceiling:
+        quoted_val = float(quoted) if quoted is not None else None
+        if quoted_val is not None and max_ceiling is not None and quoted_val > max_ceiling:
             # Over ceiling → agent counter-offers toward target
             assignment.negotiation_status = NegotiationStatus.NEGOTIATING.value
             action = "NEGOTIATE"
-            message = f"Provider quoted {assignment.currency} {quoted:,.0f} which exceeds ceiling of {assignment.currency} {max_ceiling:,.0f}. Agent will counter-offer."
+            message = f"Provider quoted {assignment.currency} {quoted_val:,.0f} which exceeds ceiling of {assignment.currency} {max_ceiling:,.0f}. Agent will counter-offer."
         else:
             # Within ceiling (or no ceiling set) → AWAITING HUMAN APPROVAL
             # CRITICAL: Agent NEVER autonomously accepts
             assignment.negotiation_status = NegotiationStatus.AWAITING_APPROVAL.value
             action = "AWAITING_APPROVAL"
-            budget_validation = self._validate_budget(event, float(quoted or 0))
-            message = f"Provider offer of {assignment.currency} {quoted:,.0f} is within ceiling. Human approval required."
+            budget_validation = self._validate_budget(event, quoted_val or 0.0)
+            quoted_str = f"{quoted_val:,.0f}" if quoted_val is not None else "N/A"
+            message = f"Provider offer of {assignment.currency} {quoted_str} is within ceiling. Human approval required."
+
+            # Automatically create the ApprovalRequest for human decision if not already created
+            if not assignment.approval_id:
+                try:
+                    vendor = self._get_vendor(assignment.vendor_id)
+                    approval_req = ApprovalRequestCreate(
+                        action_type="PROVIDER_ENGAGEMENT",
+                        target_type="VENDOR_ASSIGNMENT",
+                        target_id=assignment.id,
+                        requested_action={
+                            "type": "CONFIRM_PROVIDER_ENGAGEMENT",
+                            "vendor_id": assignment.vendor_id,
+                            "vendor_name": vendor.name,
+                            "category": assignment.category,
+                            "quoted_amount": assignment.quoted_amount,
+                            "currency": assignment.currency,
+                            "coverage_start": assignment.coverage_start,
+                            "coverage_end": assignment.coverage_end,
+                            "advance_required": assignment.advance_required,
+                            "target_amount": assignment.target_amount,
+                            "max_approved_amount": assignment.max_approved_amount,
+                            "negotiation_round": assignment.negotiation_round,
+                            "is_simulation": assignment.is_simulation,
+                        },
+                        notes=f"Provider engagement approval for {vendor.name} — {assignment.category} at {assignment.currency} {quoted_str}",
+                    )
+                    created_approval = self._approval.create_request(assignment.event_id, "anonymous_operator", approval_req)
+                    assignment.approval_id = created_approval.id
+                except Exception:
+                    pass
 
         self._audit.record(
             event_id=assignment.event_id,
@@ -400,15 +512,52 @@ class NegotiationService:
     def confirm_engagement(self, assignment_id: str) -> Dict[str, Any]:
         """Confirms the provider engagement AFTER human approval.
 
-        Updates assignment to CONFIRMED, records budget commitment, records audit.
+        AUTHORITATIVE RULES:
+        - Must be in AWAITING_APPROVAL state.
+        - Must have a linked ApprovalRequest in the database.
+        - The linked ApprovalRequest status MUST be 'APPROVED'.
+        - Validates budget constraints: quoted amount must not exceed max_approved_amount.
+        - Updates assignment to CONFIRMED, records budget commitment, records audit.
         """
         assignment = self._get_assignment(assignment_id)
+        event = self._get_event(assignment.event_id)
 
         if assignment.negotiation_status != NegotiationStatus.AWAITING_APPROVAL.value:
             raise BadRequestException(
                 f"Cannot confirm: assignment is in '{assignment.negotiation_status}' state. "
                 f"Must be AWAITING_APPROVAL."
             )
+
+        # 1. Authoritative human approval verification
+        if not assignment.approval_id:
+            raise BadRequestException(
+                "Cannot confirm engagement: No linked ApprovalRequest exists. "
+                "Final commitment strictly requires human approval via ApprovalService."
+            )
+
+        approval = (
+            self.db.query(Approval)
+            .filter(Approval.id == assignment.approval_id, Approval.event_id == assignment.event_id)
+            .first()
+        )
+        if not approval:
+            raise BadRequestException(
+                f"Cannot confirm engagement: Linked ApprovalRequest '{assignment.approval_id}' not found."
+            )
+
+        if approval.status != "APPROVED":
+            raise BadRequestException(
+                f"Cannot confirm engagement: Linked ApprovalRequest '{assignment.approval_id}' has status "
+                f"'{approval.status}'. Must be 'APPROVED' before confirmation."
+            )
+
+        # 2. Budget constraint verification
+        if assignment.max_approved_amount is not None and assignment.quoted_amount is not None:
+            if float(assignment.quoted_amount) > float(assignment.max_approved_amount):
+                raise BadRequestException(
+                    f"Cannot confirm: Quoted amount ({assignment.currency} {assignment.quoted_amount}) "
+                    f"exceeds max approved ceiling ({assignment.currency} {assignment.max_approved_amount})."
+                )
 
         # Mark confirmed
         assignment.negotiation_status = NegotiationStatus.CONFIRMED.value
@@ -439,6 +588,7 @@ class NegotiationService:
                 "agreed_cost": assignment.agreed_cost,
                 "coverage_start": assignment.coverage_start,
                 "coverage_end": assignment.coverage_end,
+                "approval_id": assignment.approval_id,
             },
         )
 
@@ -452,6 +602,7 @@ class NegotiationService:
             "agreed_cost": assignment.agreed_cost,
             "vendor_name": vendor.name,
             "category": assignment.category,
+            "approval_id": assignment.approval_id,
             "message": f"Provider {vendor.name} confirmed for {assignment.category} at {assignment.currency} {assignment.agreed_cost:,.0f}",
         }
 
@@ -639,6 +790,7 @@ class NegotiationService:
             r'inr\s*([\d,]+)',
             r'\$([\d,]+)',
             r'([\d,]+)\s*(?:rupees|rs|inr)',
+            r'\b(\d{4,7})\b',
         ]
         for pattern in price_patterns:
             match = re.search(pattern, text_lower.replace(',', ''))

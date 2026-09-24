@@ -10,6 +10,7 @@ from app.schemas.live_state import (
     GoLiveRequest,
     TaskStatusUpdate,
     ConcludeRequest,
+    ProviderOperationalSummary,
 )
 from app.schemas.task import TaskResponse
 
@@ -43,6 +44,16 @@ def get_live_state(
     """
     service = LiveStateService(db)
     return service.get_live_state(event_id)
+
+
+@router.get("/{event_id}/providers/live-state", response_model=ProviderOperationalSummary)
+def get_providers_live_state(
+    event_id: str,
+    db: Session = Depends(get_db_session),
+) -> ProviderOperationalSummary:
+    """Get live provider operations state snapshot including confirmations and commitments."""
+    service = LiveStateService(db)
+    return service.get_provider_live_state(event_id)
 
 
 @router.put("/{event_id}/tasks/{task_id}/status", response_model=TaskResponse)

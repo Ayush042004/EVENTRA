@@ -10,10 +10,11 @@ from app.agent.provider import LLMProvider, get_default_llm_provider
 class EventOperationsAgent:
     """The single Event Operations Agent sitting above EVENTRA's deterministic backend.
     
-    Orchestrates the operational loop:
-    Observe -> Interpret -> Investigate -> Generate Options (Phase 8) ->
-    Deterministic Validation -> Agent Selects -> Authorize (Phase 9) ->
-    [Approval Gate] -> Execute (Phase 9) -> Verify (Phase 10) -> Reevaluate.
+    Orchestrates two operational branches:
+    1. Incident Recovery: Observe -> Interpret -> Investigate -> Generate Options (Phase 8) ->
+       Deterministic Validation -> Agent Selects -> Authorize (Phase 9) ->
+       [Approval Gate] -> Execute (Phase 9) -> Verify (Phase 10) -> Reevaluate.
+    2. Provider Operations: Observe -> Interpret -> Provider Operations -> End.
     """
 
     def __init__(self, db: Session, llm_provider: Optional[LLMProvider] = None):
@@ -59,6 +60,8 @@ class EventOperationsAgent:
             "execution_result": None,
             "verification_result": None,
             "decision_trace": None,
+            "operational_intent": None,
+            "provider_operation_result": None,
             "messages": [{"role": "user", "content": message}],
             "next_action": None,
             "status": "INITIALIZED",
@@ -89,6 +92,8 @@ class EventOperationsAgent:
             "execution": final_state.get("execution_result"),
             "verification": final_state.get("verification_result"),
             "decision_trace": final_state.get("decision_trace"),
+            "operational_intent": final_state.get("operational_intent"),
+            "provider_operation": final_state.get("provider_operation_result"),
             "error": final_state.get("error"),
             "step_count": final_state.get("step_count"),
         }

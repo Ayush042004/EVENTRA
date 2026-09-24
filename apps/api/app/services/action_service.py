@@ -94,6 +94,10 @@ class ActionService:
                 affected_entities, execution_result_data = self._execute_adjust_budget(
                     event_id, target_id, payload
                 )
+            elif action_type == "PROVIDER_ENGAGEMENT":
+                affected_entities, execution_result_data = self._execute_provider_engagement(
+                    event_id, target_id, payload
+                )
             else:
                 raise BadRequestException(f"Unknown operational action type '{action_type}'.")
 
@@ -396,3 +400,20 @@ class ActionService:
             "actual_amount": float(item.actual_amount) if item.actual_amount else 0.0,
             "estimated_amount": float(item.estimated_amount) if item.estimated_amount else 0.0,
         }
+
+    def _execute_provider_engagement(
+        self, event_id: str, target_id: Optional[str], payload: Dict[str, Any]
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        from app.models.vendor_assignment import VendorAssignment
+        assignment_id = target_id or payload.get("assignment_id")
+        assignment = self.db.query(VendorAssignment).filter_by(id=assignment_id).first()
+        if not assignment:
+            raise NotFoundException(f"VendorAssignment '{assignment_id}' not found.")
+
+        assignment.negotiation_status = "APPROVED"
+        return [{"entity_type": "VENDOR_ASSIGNMENT", "id": assignment.id}], {
+            "assignment_id": assignment.id,
+            "negotiation_status": "APPROVED",
+            "quoted_amount": assignment.quoted_amount,
+        }
+

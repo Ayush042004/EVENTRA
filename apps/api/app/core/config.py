@@ -68,11 +68,20 @@ class Settings(BaseSettings):
     NOTIFICATION_PROVIDER: str = "in_app"  # "in_app", "webhook", "mock"
     NOTIFICATION_WEBHOOK_URL: Union[str, None] = None
 
-    COMMUNICATION_PROVIDER: str = "mock"  # "mock", "whatsapp"
+    COMMUNICATION_PROVIDER: str = "mock"  # "mock", "openwa"
+    # Legacy WhatsApp Cloud API settings (kept for backward compatibility)
     WHATSAPP_ENABLED: bool = False
     WHATSAPP_API_TOKEN: Union[str, None] = None
     WHATSAPP_PHONE_NUMBER_ID: Union[str, None] = None
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: Union[str, None] = None
+
+    # OpenWA self-hosted WhatsApp gateway configuration
+    OPENWA_ENABLED: bool = False
+    OPENWA_BASE_URL: str = "http://localhost:2785/api"  # OpenWA REST API base
+    OPENWA_API_KEY: Union[str, None] = None
+    OPENWA_SESSION_ID: Union[str, None] = None
+    OPENWA_WEBHOOK_SECRET: Union[str, None] = None  # HMAC webhook signing secret
+    OPENWA_TIMEOUT_SECONDS: int = 10
 
     LLM_PROVIDER: str = "mock"  # "mock", "gemini", "openai"
     LLM_MODEL: str = "gemini-1.5-pro"

@@ -268,3 +268,14 @@ class ApprovalService:
         if not approval:
             raise NotFoundException(f"Approval request '{approval_id}' not found for event '{event_id}'.")
         return approval
+
+    def get_pending_approvals(self, event_id: str) -> List[Approval]:
+        """Retrieves pending approval requests for an event."""
+        return (
+            self.db.query(Approval)
+            .filter(Approval.event_id == event_id, Approval.status == "PENDING")
+            .order_by(Approval.created_at.desc(), Approval.id.asc())
+            .all()
+        )
+
+

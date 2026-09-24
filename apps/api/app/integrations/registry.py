@@ -16,7 +16,7 @@ from app.integrations.notifications.providers import (
     MockNotificationProvider,
 )
 from app.integrations.communication.mock import MockCommunicationProvider
-from app.integrations.whatsapp.client import WhatsAppAdapter
+from app.integrations.whatsapp.client import OpenWACommunicationAdapter, WhatsAppAdapter
 from app.integrations.venues.discovery import ExternalVenueAdapter
 from app.integrations.providers.directory import ExternalProviderAdapter
 from app.integrations.google_maps_scraper.adapter import GoogleMapsScraperAdapter
@@ -63,11 +63,13 @@ class IntegrationRegistry:
     def get_communication_provider(self) -> ProviderCommunicationProvider:
         if not self._communication_provider:
             comm_type = (settings.COMMUNICATION_PROVIDER or "mock").lower()
-            if (comm_type == "whatsapp" or settings.WHATSAPP_ENABLED) and settings.WHATSAPP_API_TOKEN:
-                self._communication_provider = WhatsAppAdapter(
-                    api_token=settings.WHATSAPP_API_TOKEN,
-                    phone_number_id=settings.WHATSAPP_PHONE_NUMBER_ID,
-                    verify_token=settings.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+            if comm_type in ("openwa", "whatsapp") or settings.OPENWA_ENABLED:
+                self._communication_provider = OpenWACommunicationAdapter(
+                    base_url=settings.OPENWA_BASE_URL,
+                    api_key=settings.OPENWA_API_KEY,
+                    session_id=settings.OPENWA_SESSION_ID,
+                    webhook_secret=settings.OPENWA_WEBHOOK_SECRET,
+                    timeout_seconds=settings.OPENWA_TIMEOUT_SECONDS,
                 )
             else:
                 self._communication_provider = MockCommunicationProvider()
@@ -100,6 +102,23 @@ class IntegrationRegistry:
         comm_prov = self.get_communication_provider()
         scraper_prov = self.get_google_maps_scraper()
 
+        comm_is_real = (
+            isinstance(comm_prov, OpenWACommunicationAdapter)
+            and settings.OPENWA_ENABLED
+            and bool(settings.OPENWA_SESSION_ID)
+        )
+        comm_status: Dict[str, Any] = {
+            "provider": settings.COMMUNICATION_PROVIDER,
+            "mode": "REAL" if comm_is_real else "MOCK",
+            "openwa_enabled": settings.OPENWA_ENABLED,
+            "whatsapp_enabled": settings.WHATSAPP_ENABLED or settings.OPENWA_ENABLED,
+            "is_configured": bool(settings.OPENWA_SESSION_ID),
+            "session_id": settings.OPENWA_SESSION_ID if settings.OPENWA_ENABLED else None,
+            "base_url": settings.OPENWA_BASE_URL if settings.OPENWA_ENABLED else None,
+        }
+        if isinstance(comm_prov, OpenWACommunicationAdapter) and settings.OPENWA_ENABLED:
+            comm_status["gateway_health"] = comm_prov.check_health()
+
         return {
             "maps": {
                 "provider": settings.MAP_PROVIDER,
@@ -118,12 +137,7 @@ class IntegrationRegistry:
                 "mode": "REAL" if settings.NOTIFICATION_PROVIDER in ("in_app", "webhook") else "MOCK",
                 "is_configured": bool(settings.NOTIFICATION_WEBHOOK_URL or settings.NOTIFICATION_PROVIDER == "in_app"),
             },
-            "communication": {
-                "provider": settings.COMMUNICATION_PROVIDER,
-                "mode": "REAL" if isinstance(comm_prov, WhatsAppAdapter) and settings.WHATSAPP_API_TOKEN else "MOCK",
-                "whatsapp_enabled": settings.WHATSAPP_ENABLED,
-                "is_configured": bool(settings.WHATSAPP_API_TOKEN and settings.WHATSAPP_PHONE_NUMBER_ID),
-            },
+            "communication": comm_status,
             "llm": {
                 "provider": settings.LLM_PROVIDER,
                 "model": settings.LLM_MODEL,

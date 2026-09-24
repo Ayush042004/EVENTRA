@@ -24,7 +24,7 @@ class VendorBase(BaseModel):
     source: str = Field(default="INTERNAL", max_length=50)
     source_id: Optional[str] = Field(None, max_length=255)
     raw_category: Optional[str] = Field(None, max_length=255)
-    capabilities: List[str] = Field(default_factory=list)
+    capabilities: Optional[List[str]] = Field(default_factory=list)
     classification_confidence: Optional[float] = None
 
 

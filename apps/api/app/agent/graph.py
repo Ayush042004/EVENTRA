@@ -1,4 +1,10 @@
-"""LangGraph definition for the single Event Operations Agent."""
+"""LangGraph definition for the single Event Operations Agent.
+
+Supports both incident recovery AND provider communication/negotiation workflows.
+The agent interprets operational intent and routes accordingly:
+- Incident/recovery → existing observe→investigate→options→authorize→execute→verify flow
+- Provider operations → provider_operations_node using communication tools
+"""
 from typing import Any, Dict, List, Optional
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
@@ -18,9 +24,32 @@ from app.agent.tools import (
     execute_action,
     verify_action,
     get_decision_trace,
+    contact_provider,
+    negotiate_with_provider,
+    request_provider_approval,
+    confirm_provider_engagement,
+    simulate_provider_response,
+    get_provider_negotiation_history,
+    start_autonomous_operations,
+    modify_event_plan,
 )
 
 MAX_AGENT_STEPS = 10
+
+# --- Intent keywords for routing ---
+PROVIDER_KEYWORDS = [
+    "provider", "vendor", "contact", "negotiate", "quotation", "quote", "engagement",
+    "photographer", "caterer", "catering", "dj", "sound", "lighting", "decor",
+    "decorator", "florist", "videographer", "confirm provider", "assign provider",
+    "approval", "approve engagement", "counter-offer", "counter offer", "simulate",
+    "whatsapp", "message provider", "send message", "coverage", "available",
+    "booking", "book provider", "provider communication", "negotiation",
+]
+
+INCIDENT_KEYWORDS = [
+    "incident", "cancelled", "no-show", "delay", "broken", "shortage", "risk",
+    "emergency", "critical", "blocked", "failed", "recovery", "overheat",
+]
 
 
 def _get_context(config: Optional[RunnableConfig]):
@@ -28,6 +57,57 @@ def _get_context(config: Optional[RunnableConfig]):
     db = configurable.get("db")
     llm = configurable.get("llm_provider") or get_default_llm_provider()
     return db, llm
+
+
+def _classify_intent(message: str, has_incidents: bool) -> str:
+    """Deterministic intent classification based on message keywords and event state."""
+    msg_lower = (message or "").lower()
+
+    # Explicit communication and negotiation action triggers
+    explicit_comm_actions = [
+        "contact provider", "contact vendor", "whatsapp", "send message", "message provider",
+        "negotiate", "counter-offer", "counter offer", "simulate provider", "simulate response",
+        "confirm engagement", "confirm provider", "request engagement approval",
+        "provider conversation", "provider thread",
+    ]
+    is_explicit_comm = any(kw in msg_lower for kw in explicit_comm_actions)
+
+    # If there are open incidents or the message indicates an incident / failure:
+    # Priority is INCIDENT_RECOVERY unless the user is explicitly executing provider communication.
+    if has_incidents or any(kw in msg_lower for kw in INCIDENT_KEYWORDS):
+        if not is_explicit_comm:
+            return "INCIDENT_RECOVERY"
+
+    # Route provider operational actions
+    if any(kw in msg_lower for kw in ["contact", "engage", "whatsapp", "message provider"]):
+        return "PROVIDER_CONTACT"
+    if any(kw in msg_lower for kw in ["negotiate", "counter-offer", "counter offer"]):
+        return "PROVIDER_NEGOTIATION"
+    if any(kw in msg_lower for kw in ["approve engagement", "provider approval", "request approval"]):
+        return "PROVIDER_APPROVAL"
+    if any(kw in msg_lower for kw in ["confirm provider", "confirm engagement"]):
+        return "PROVIDER_CONFIRMATION"
+    if any(kw in msg_lower for kw in ["simulate"]):
+        return "PROVIDER_SIMULATION"
+    if any(kw in msg_lower for kw in ["conversation", "history", "thread", "messages"]):
+        return "PROVIDER_QUERY"
+
+    # Start operations triggers
+    if any(kw in msg_lower for kw in ["start operations", "begin operations", "start operation", "launch operations", "start executing", "start execution", "execute plan"]):
+        return "START_OPERATIONS"
+
+    # Plan modification triggers
+    if any(kw in msg_lower for kw in ["remove ", "delete ", "drop requirement", "add ", "without ", "modify budget", "update budget", "change guest", "change pax"]):
+        return "PLAN_MODIFICATION"
+
+    # If no incidents and message mentions provider/vendor discovery
+    if any(kw in msg_lower for kw in ["provider", "vendor", "caterer", "dj", "decorator", "photographer"]):
+        return "PROVIDER_DISCOVERY"
+
+    if has_incidents:
+        return "INCIDENT_RECOVERY"
+
+    return "GENERAL_EVENT_QUERY"
 
 
 def observe_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
@@ -54,11 +134,15 @@ def observe_node(state: AgentState, config: Optional[RunnableConfig] = None) -> 
 
 
 def interpret_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
-    """Interprets natural language report and operational context."""
+    """Interprets natural language report and determines operational intent."""
     _, llm = _get_context(config)
     message = state.get("message", "")
     event_state = state.get("current_event_state") or {}
     incidents = state.get("current_incidents") or []
+
+    # Classify operational intent deterministically
+    has_incidents = len(incidents) > 0
+    intent = _classify_intent(message, has_incidents)
 
     interpretation = llm.interpret_incident(message, event_state, incidents)
 
@@ -70,9 +154,246 @@ def interpret_node(state: AgentState, config: Optional[RunnableConfig] = None) -
     })
 
     return {
+        "operational_intent": intent,
         "status": "INTERPRETING",
         "messages": messages,
     }
+
+
+def route_after_interpret(state: AgentState) -> str:
+    """Routes based on operational intent: provider operations, autonomous execution, or incident recovery."""
+    intent = state.get("operational_intent", "")
+
+    if intent.startswith("PROVIDER_") or intent in ("START_OPERATIONS", "PLAN_MODIFICATION"):
+        return "provider_operations"
+
+    return "investigate"
+
+
+def provider_operations_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
+    """Executes provider communication/negotiation operations using deterministic tools.
+
+    Dispatches to the appropriate communication tool based on operational intent.
+    All business logic, budget checks, and approvals are executed deterministically
+    through NegotiationService.
+    """
+    db, _ = _get_context(config)
+    event_id = state["event_id"]
+    message = state.get("message", "")
+    intent = state.get("operational_intent", "PROVIDER_DISCOVERY")
+    event_state = state.get("current_event_state") or {}
+
+    result: Dict[str, Any] = {"intent": intent}
+
+    try:
+        if intent == "START_OPERATIONS":
+            op_result = start_autonomous_operations(
+                db=db,
+                event_id=event_id,
+                user_id=state.get("user_id", "anonymous_operator"),
+            )
+            result["operation"] = "START_OPERATIONS"
+            result["data"] = op_result
+            result["response"] = op_result.get("message", "Autonomous operations started.")
+
+        elif intent == "PLAN_MODIFICATION":
+            op_result = modify_event_plan(
+                db=db,
+                event_id=event_id,
+                modification=message,
+                user_id=state.get("user_id", "anonymous_operator"),
+            )
+            result["operation"] = "MODIFY_PLAN"
+            result["data"] = op_result
+            result["response"] = op_result.get("message", "Operational plan updated.")
+
+        elif intent == "PROVIDER_CONTACT":
+            # Extract assignment_id from message context or find pending assignments
+            assignment_id = _extract_assignment_id(db, event_id, message)
+            if assignment_id:
+                op_result = contact_provider(
+                    db=db,
+                    event_id=event_id,
+                    assignment_id=assignment_id,
+                )
+                result["operation"] = "CONTACT_PROVIDER"
+                result["data"] = op_result
+                result["response"] = (
+                    f"Provider contacted. Status: {op_result.get('negotiation_status', 'CONTACTED')}. "
+                    f"Channel: {op_result.get('channel', 'MOCK')}."
+                )
+            else:
+                result["response"] = "No pending provider assignment found for this event. Assign a provider first."
+                result["operation"] = "NO_ASSIGNMENT"
+
+        elif intent == "PROVIDER_NEGOTIATION":
+            assignment_id = _extract_assignment_id(db, event_id, message, status_filter="NEGOTIATING")
+            if assignment_id:
+                op_result = negotiate_with_provider(db=db, assignment_id=assignment_id)
+                result["operation"] = "NEGOTIATE"
+                result["data"] = op_result
+                result["response"] = (
+                    f"Counter-offer sent. Round: {op_result.get('round', '?')}. "
+                    f"Counter amount: {op_result.get('counter_offer_amount', 'N/A')}."
+                )
+            else:
+                result["response"] = "No assignment in NEGOTIATING state found."
+                result["operation"] = "NO_NEGOTIABLE_ASSIGNMENT"
+
+        elif intent == "PROVIDER_APPROVAL":
+            assignment_id = _extract_assignment_id(db, event_id, message, status_filter="AWAITING_APPROVAL")
+            if assignment_id:
+                op_result = request_provider_approval(db=db, event_id=event_id, assignment_id=assignment_id)
+                result["operation"] = "REQUEST_APPROVAL"
+                result["data"] = op_result
+                result["response"] = (
+                    f"Approval requested. Approval ID: {op_result.get('approval_id', 'N/A')}. "
+                    f"Organizer must approve before confirmation."
+                )
+            else:
+                result["response"] = "No assignment awaiting approval found."
+                result["operation"] = "NO_APPROVAL_NEEDED"
+
+        elif intent == "PROVIDER_CONFIRMATION":
+            assignment_id = _extract_assignment_id(db, event_id, message, status_filter="AWAITING_APPROVAL")
+            if assignment_id:
+                op_result = confirm_provider_engagement(db=db, assignment_id=assignment_id)
+                result["operation"] = "CONFIRM_ENGAGEMENT"
+                result["data"] = op_result
+                result["response"] = (
+                    f"Provider confirmed: {op_result.get('vendor_name', 'Unknown')} for "
+                    f"{op_result.get('category', 'N/A')} at {op_result.get('agreed_cost', 'N/A')}."
+                )
+            else:
+                result["response"] = "No assignment ready for confirmation. Approval must be granted first."
+                result["operation"] = "CONFIRMATION_NOT_READY"
+
+        elif intent == "PROVIDER_SIMULATION":
+            assignment_id = _extract_assignment_id(db, event_id, message)
+            if assignment_id:
+                scenario = "ACCEPT"
+                msg_lower = message.lower()
+                if "decline" in msg_lower:
+                    scenario = "DECLINE"
+                elif "counter" in msg_lower:
+                    scenario = "COUNTER"
+                elif "no response" in msg_lower or "no_response" in msg_lower:
+                    scenario = "NO_RESPONSE"
+
+                op_result = simulate_provider_response(
+                    db=db,
+                    assignment_id=assignment_id,
+                    scenario=scenario,
+                )
+                result["operation"] = "SIMULATION"
+                result["data"] = op_result
+                result["response"] = (
+                    f"[DEMO SIMULATION] Provider response simulated ({scenario}). "
+                    f"Status: {op_result.get('negotiation_status', 'N/A')}."
+                )
+            else:
+                result["response"] = "No provider assignment found for simulation."
+                result["operation"] = "NO_ASSIGNMENT"
+
+        elif intent == "PROVIDER_QUERY":
+            assignment_id = _extract_assignment_id(db, event_id, message)
+            if assignment_id:
+                op_result = get_provider_negotiation_history(db=db, assignment_id=assignment_id)
+                # Serialize assignment for response
+                assignment_data = op_result.get("assignment")
+                vendor_data = op_result.get("vendor")
+                msg_count = len(op_result.get("messages", []))
+                v_name = getattr(vendor_data, "name", "Unknown") if vendor_data else "Unknown"
+                neg_status = getattr(assignment_data, "negotiation_status", "N/A") if assignment_data else "N/A"
+                result["operation"] = "QUERY_CONVERSATION"
+                result["data"] = {
+                    "message_count": msg_count,
+                    "negotiation_status": neg_status,
+                    "vendor_name": v_name,
+                    "messages": op_result.get("messages", []),
+                    "budget_validation": op_result.get("budget_validation"),
+                }
+                result["response"] = (
+                    f"Conversation with {v_name}: {msg_count} messages. "
+                    f"Negotiation status: {neg_status}."
+                )
+            else:
+                result["response"] = "No provider assignment found for this event."
+                result["operation"] = "NO_ASSIGNMENT"
+
+        else:
+            # PROVIDER_DISCOVERY or general provider query
+            from app.models.vendor_assignment import VendorAssignment
+            assignments = (
+                db.query(VendorAssignment)
+                .filter(VendorAssignment.event_id == event_id)
+                .all()
+            )
+            summary_parts = []
+            for a in assignments:
+                summary_parts.append(
+                    f"- {a.category}: {a.negotiation_status} "
+                    f"(quoted: {a.quoted_amount or 'N/A'}, target: {a.target_amount or 'N/A'})"
+                )
+            if summary_parts:
+                result["response"] = (
+                    f"Provider assignments for this event:\n" + "\n".join(summary_parts)
+                )
+            else:
+                result["response"] = "No provider assignments found for this event."
+            result["operation"] = "PROVIDER_SUMMARY"
+
+    except Exception as exc:
+        result["operation"] = "ERROR"
+        result["error"] = str(exc)
+        result["response"] = f"Provider operation failed: {str(exc)}"
+
+    return {
+        "provider_operation_result": result,
+        "status": "COMPLETED",
+        "final_response": result.get("response", "Provider operation completed."),
+    }
+
+
+def _extract_assignment_id(
+    db, event_id: str, message: str, status_filter: Optional[str] = None
+) -> Optional[str]:
+    """Finds the most relevant vendor assignment for an event.
+
+    Deterministic resolution: finds the assignment matching the status filter,
+    or the most recently created one if no filter specified.
+    """
+    from app.models.vendor_assignment import VendorAssignment
+
+    query = db.query(VendorAssignment).filter(VendorAssignment.event_id == event_id)
+
+    if status_filter:
+        query = query.filter(VendorAssignment.negotiation_status == status_filter)
+
+    # Order by most recent
+    assignments = query.order_by(VendorAssignment.created_at.desc()).all()
+
+    if not assignments:
+        # If filtered by status and nothing found, try without filter
+        if status_filter:
+            assignments = (
+                db.query(VendorAssignment)
+                .filter(VendorAssignment.event_id == event_id)
+                .order_by(VendorAssignment.created_at.desc())
+                .all()
+            )
+        if not assignments:
+            return None
+
+    # Try to match by category keyword from message
+    msg_lower = message.lower()
+    for a in assignments:
+        cat_lower = (a.category or "").lower().replace("_", " ")
+        if cat_lower and cat_lower in msg_lower:
+            return a.id
+
+    # Return first (most recent)
+    return assignments[0].id
 
 
 def investigate_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
@@ -337,9 +658,33 @@ def reevaluate_node(state: AgentState, config: Optional[RunnableConfig] = None) 
 def end_no_incident_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """Terminal node when no active incident requires recovery."""
     event_state = state.get("current_event_state") or {}
+
+    # Build informative response with provider state
+    db, _ = _get_context(config)
+    event_id = state["event_id"]
+
+    response_parts = [
+        f"Event '{event_state.get('name', event_id)}' is in state '{event_state.get('state', 'NORMAL')}'.",
+        "No active incidents require recovery.",
+    ]
+
+    # Include provider assignment summary
+    try:
+        from app.models.vendor_assignment import VendorAssignment
+        assignments = db.query(VendorAssignment).filter(VendorAssignment.event_id == event_id).all()
+        if assignments:
+            response_parts.append(f"\nProvider assignments ({len(assignments)}):")
+            for a in assignments:
+                response_parts.append(
+                    f"  • {a.category}: {a.negotiation_status}"
+                    + (f" — quoted {a.currency} {a.quoted_amount:,.0f}" if a.quoted_amount else "")
+                )
+    except Exception:
+        pass
+
     return {
         "status": "COMPLETED",
-        "final_response": f"Event '{event_state.get('name', state['event_id'])}' is in state '{event_state.get('state', 'NORMAL')}'. No active incidents require recovery.",
+        "final_response": "\n".join(response_parts),
     }
 
 
@@ -354,7 +699,12 @@ def end_failed_node(state: AgentState, config: Optional[RunnableConfig] = None) 
 
 
 class EventOperationsAgentGraph:
-    """LangGraph definition for EVENTRA's single Event Operations Agent."""
+    """LangGraph definition for EVENTRA's single Event Operations Agent.
+
+    Supports two operational branches:
+    1. Incident Recovery: observe → interpret → investigate → generate → authorize → execute → verify
+    2. Provider Operations: observe → interpret → provider_operations → end
+    """
 
     def __init__(self):
         self._compiled_graph = None
@@ -366,6 +716,7 @@ class EventOperationsAgentGraph:
         # 1. Register Nodes
         builder.add_node("observe", observe_node)
         builder.add_node("interpret", interpret_node)
+        builder.add_node("provider_operations", provider_operations_node)
         builder.add_node("investigate", investigate_node)
         builder.add_node("generate_options", generate_options_node)
         builder.add_node("validate_options", validate_options_node)
@@ -381,8 +732,21 @@ class EventOperationsAgentGraph:
         # 2. Register Edges
         builder.add_edge(START, "observe")
         builder.add_edge("observe", "interpret")
-        builder.add_edge("interpret", "investigate")
 
+        # After interpret: route to provider operations or incident investigation
+        builder.add_conditional_edges(
+            "interpret",
+            route_after_interpret,
+            {
+                "provider_operations": "provider_operations",
+                "investigate": "investigate",
+            },
+        )
+
+        # Provider operations terminate directly
+        builder.add_edge("provider_operations", END)
+
+        # Incident recovery flow (existing)
         builder.add_conditional_edges(
             "investigate",
             route_after_investigate,

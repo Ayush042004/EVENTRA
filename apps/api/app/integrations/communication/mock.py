@@ -45,10 +45,11 @@ class MockCommunicationProvider(ProviderCommunicationProvider):
         event_id: str,
         provider_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        results = [m for m in self._history if m["event_id"] == event_id]
+        results = [m for m in self._history if m.get("event_id") == event_id]
         if provider_id:
-            results = [m for m in results if m["provider_id"] == provider_id]
-        return sorted(results, key=lambda x: x["timestamp"])
+            results = [m for m in results if m.get("provider_id") == provider_id]
+        return sorted(results, key=lambda x: x.get("timestamp", 0))
+
 
     def receive_inbound(
         self,

@@ -1,6 +1,7 @@
-"""REST API Endpoints: Real-World Integrations"""
 from typing import Any, Dict, List, Optional, Union
-from fastapi import APIRouter, Depends, Query, Response, status
+import hmac
+import hashlib
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,8 @@ from app.core.config import settings
 from app.integrations.registry import registry
 from app.services.notification_service import NotificationService
 from app.services.provider_communication_service import ProviderCommunicationService
+from app.services.negotiation_service import NegotiationService
+from app.observability.audit import AuditRecorder
 
 router = APIRouter(tags=["Integrations"])
 
@@ -87,6 +90,152 @@ def receive_whatsapp_webhook(payload: Dict[str, Any]):
     comm = registry.get_communication_provider()
     result = comm.receive_inbound(payload)
     return {"status": "PROCESSED", "result": result.to_dict()}
+
+
+@router.get("/integrations/openwa/status")
+def get_openwa_status():
+    """Returns OpenWA self-hosted gateway connectivity and session status."""
+    comm = registry.get_communication_provider()
+    from app.integrations.whatsapp.client import OpenWACommunicationAdapter
+    if isinstance(comm, OpenWACommunicationAdapter):
+        return {
+            "enabled": settings.OPENWA_ENABLED,
+            "session_id": settings.OPENWA_SESSION_ID,
+            "base_url": settings.OPENWA_BASE_URL,
+            "health": comm.check_health(),
+            "session": comm.get_session_status(),
+        }
+    return {
+        "enabled": False,
+        "mode": "MOCK",
+        "message": "OpenWA provider not active.",
+    }
+
+
+@router.post("/webhooks/openwa")
+@router.post("/integrations/openwa/webhook")
+async def receive_openwa_webhook(
+    request: Request,
+    db: Session = Depends(get_db_session),
+    x_openwa_signature: Optional[str] = Header(None, alias="X-OpenWA-Signature"),
+):
+    """Receives OpenWA webhook events (e.g. message, session.status).
+    
+    1. Verifies HMAC signature if OPENWA_WEBHOOK_SECRET is configured.
+    2. Parses incoming message.
+    3. Resolves provider by phone number.
+    4. Finds active VendorAssignment.
+    5. Feeds response into NegotiationService for deterministic handling.
+    """
+    raw_body = await request.body()
+
+    # 1. HMAC signature verification
+    if settings.OPENWA_WEBHOOK_SECRET:
+        if not x_openwa_signature:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing X-OpenWA-Signature header.",
+            )
+        expected_sig = hmac.new(
+            settings.OPENWA_WEBHOOK_SECRET.encode("utf-8"),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected_sig.lower(), x_openwa_signature.lower()):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid webhook HMAC signature.",
+            )
+
+    try:
+        import json
+        payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Malformed JSON payload: {e}",
+        )
+
+    # Inbound normalization via communication adapter
+    comm = registry.get_communication_provider()
+    norm_result = comm.receive_inbound(payload)
+
+    # Extract message details
+    data = payload.get("data", payload)
+    if isinstance(data, list) and len(data) > 0:
+        data = data[0]
+
+    sender = data.get("from") or data.get("chatId") or payload.get("from") or ""
+    text = (
+        data.get("body")
+        or data.get("text")
+        or data.get("message")
+        or payload.get("body")
+        or ""
+    )
+
+    if not sender or not text:
+        return {
+            "status": "ACK",
+            "message": "Webhook received; no actionable text message found.",
+            "parsed": norm_result.to_dict(),
+        }
+
+    # 2. Provider resolution & negotiation flow
+    neg_service = NegotiationService(db)
+    vendor = neg_service.resolve_provider_by_phone(sender)
+
+    if not vendor:
+        audit = AuditRecorder(db)
+        audit.record(
+            event_id="SYSTEM",
+            actor_id=sender,
+            actor_type="EXTERNAL",
+            action="OPENWA_UNMAPPED_MESSAGE",
+            action_type="COMMUNICATION",
+            after_state={"sender": sender, "text": text[:200]},
+        )
+        return {
+            "status": "UNMAPPED_PROVIDER",
+            "message": f"Received message from '{sender}', but no registered provider matched.",
+            "sender": sender,
+        }
+
+    # 3. Find active assignment
+    assignment = neg_service.find_active_assignment(vendor.id)
+    if not assignment:
+        audit = AuditRecorder(db)
+        audit.record(
+            event_id="SYSTEM",
+            actor_id=vendor.id,
+            actor_type="PROVIDER",
+            action="OPENWA_MESSAGE_NO_ACTIVE_ASSIGNMENT",
+            action_type="COMMUNICATION",
+            target_type="VENDOR",
+            target_id=vendor.id,
+            after_state={"vendor_name": vendor.name, "text": text[:200]},
+        )
+        return {
+            "status": "NO_ACTIVE_ASSIGNMENT",
+            "vendor_id": vendor.id,
+            "vendor_name": vendor.name,
+            "message": "Provider resolved, but no active engagement found.",
+        }
+
+    # 4. Process provider response through authoritative domain service
+    proc_result = neg_service.process_provider_response(
+        assignment_id=assignment.id,
+        response_text=text,
+        is_simulation=False,
+    )
+
+    return {
+        "status": "PROCESSED",
+        "vendor_id": vendor.id,
+        "vendor_name": vendor.name,
+        "assignment_id": assignment.id,
+        "negotiation_result": proc_result,
+    }
 
 
 # --- Event Notification Routes ---

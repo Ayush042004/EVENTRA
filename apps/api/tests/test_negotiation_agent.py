@@ -159,6 +159,12 @@ def test_deterministic_authority_rule_requires_human_approval(
     approval_res = service.request_approval(sample_event.id, sample_assignment.id)
     assert approval_res["approval_id"] is not None
 
+    # Simulate human approval decision
+    from app.models.approval import Approval
+    approval = db_session.query(Approval).filter(Approval.id == approval_res["approval_id"]).first()
+    approval.status = "APPROVED"
+    db_session.commit()
+
     # Approve and confirm
     confirm_res = service.confirm_engagement(sample_assignment.id)
     assert confirm_res["negotiation_status"] == NegotiationStatus.CONFIRMED.value
